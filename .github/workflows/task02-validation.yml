@@ -1,0 +1,33 @@
+name: task02-5m-validation
+on:
+  push:
+    paths:
+      - 'validation/task02/**'
+      - 'grading/grade.py'
+      - '.github/workflows/task02-validation.yml'
+  workflow_dispatch:
+jobs:
+  validate-5m:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install duckdb pyarrow pandas numpy psutil
+      - name: Generate full 5M-row challenge
+        run: python exams/task02_large_data/generate.py --rows 5000000
+      - name: Run out-of-core DuckDB solution
+        run: python validation/task02/run.py
+      - name: Grade Task 02 validation
+        run: python grading/grade.py 02 --attempt automation-ci
+      - name: Enforce perfect validation grade
+        run: python -c "import json; g=json.load(open('attempts/task02/automation-ci/GRADE.json')); assert g['score']==100 and not g['critical_fail'], g"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: task02-validation-evidence
+          path: |
+            attempts/task02/automation-ci/GRADE.json
+            attempts/task02/automation-ci/outputs/
+          retention-days: 30
