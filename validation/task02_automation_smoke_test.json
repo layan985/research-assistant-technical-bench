@@ -1,0 +1,33 @@
+{
+  "validation_type": "automated_system_smoke_test",
+  "human_performance_score": false,
+  "task": "02",
+  "run_date": "2026-08-08",
+  "workflow_run_id": 31260273527,
+  "workflow_artifact_id": 9022608660,
+  "workflow_artifact_digest": "sha256:9717d205c6657f0bdb870498591e7e606506519da0d0f6640da13dc3786b61f1",
+  "grade": {
+    "score": 100,
+    "critical_fail": false,
+    "notes": []
+  },
+  "quality": {
+    "input_rows": 5000020,
+    "unique_event_ids_after_latest_ingest": 5000000,
+    "duplicate_event_ids_removed": 20,
+    "invalid_account_rows_excluded": 41,
+    "clean_rows": 4999959,
+    "peak_rss_mb": 921.52,
+    "elapsed_seconds": 8.141,
+    "duckdb_memory_limit_mb": 900
+  },
+  "output_sha256": {
+    "README.md": "f657dbf8072fd5250a9b5e09f264394b3e5f78e9563b9d252fc5fde138f5751d",
+    "account_summary.parquet": "0c9170d2b7cf15af489a4c30e333947a0f319b2d8be4e641d52055cfbdd4f3b8",
+    "daily_region_summary.parquet": "a230fb0704cbe43c55d0d17bbccbf3a7f0c2ceefd89a8c78ce89b80b837e0ad0",
+    "quality.json": "d55726833233b93ce0a70af8f7ee8a79f11f706b1d7cd19a1d18fbc2019bcd13",
+    "query.sql": "3c1b3e9c21ae63aabe83aec133ea00ce5604dc72be129f9e91b3f06e57c00e4f",
+    "run.py": "6c50bdf1e97f03c1445c65deccf7eee54741c87dd0c1a4bee6d3ca74c864701b"
+  },
+  "integrity_note": "This run was executed automatically in GitHub Actions to validate the benchmark, DuckDB pipeline, resource target, and grader. The elapsed time and score must not be presented as the user's own timed predoc performance."
+}
