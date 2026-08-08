@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+attempts/task*/**/work/*
+!attempts/.gitkeep
+exams/task02_large_data/raw/*.csv*
+exams/task02_large_data/raw/*.parquet
+exams/task04_scraping/archive/
+exams/task05_text_data/raw/generated_*.csv

@@ -1,0 +1,17 @@
+{
+  "time_limit_minutes": 90,
+  "required_outputs": [
+    "documents.parquet",
+    "failures.csv",
+    "quality.json",
+    "run.py",
+    "README.md"
+  ],
+  "success_rate_target": 0.995,
+  "critical_checks": [
+    "HTTP ingestion",
+    "retry/backoff",
+    "bounded concurrency",
+    "highest revision kept"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "time_limit_minutes": 90,
+  "required_outputs": [
+    "predictions.parquet",
+    "embeddings.parquet",
+    "metrics.json",
+    "model_card.md",
+    "run.py"
+  ],
+  "embedding_dimensions_min": 32,
+  "critical_checks": [
+    "split by template_family",
+    "no label leakage",
+    "fixed seed"
+  ]
+}

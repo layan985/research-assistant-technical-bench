@@ -1,0 +1,17 @@
+{
+  "time_limit_minutes": 90,
+  "required_outputs": [
+    "event_study.csv",
+    "event_study.png",
+    "regression_notes.md",
+    "run.py",
+    "robustness.csv"
+  ],
+  "critical_checks": [
+    "unit FE",
+    "period FE",
+    "cluster by unit",
+    "omit event_time=-1",
+    "never-treated remain controls"
+  ]
+}

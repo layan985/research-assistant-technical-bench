@@ -1,0 +1,18 @@
+{
+  "time_limit_minutes": 90,
+  "required_outputs": [
+    "FIX_LOG.md",
+    "analysis_fixed.R",
+    "analysis_fixed.do",
+    "results.csv"
+  ],
+  "intentional_bugs": 12,
+  "critical_checks": [
+    "one-to-one merge",
+    "age >= 18",
+    "log1p sales",
+    "firm+year FE",
+    "cluster firm",
+    "exclude mediator"
+  ]
+}

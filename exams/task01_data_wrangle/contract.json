@@ -1,0 +1,21 @@
+{
+  "time_limit_minutes": 90,
+  "primary_key": [
+    "firm_id",
+    "quarter"
+  ],
+  "required_outputs": [
+    "panel.csv",
+    "summary_stats.csv",
+    "exclusions.csv",
+    "data_quality.json",
+    "README.md",
+    "run.py"
+  ],
+  "critical_checks": [
+    "unique panel key",
+    "absorbing adoption",
+    "latest correction kept",
+    "exclusions documented"
+  ]
+}

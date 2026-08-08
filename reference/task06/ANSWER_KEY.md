@@ -1,0 +1,3 @@
+# Bug families in Exam 06
+
+Reference reviewers should look for twelve material issues across the scripts, including: nonunique merge key handling / many-to-many merge, incorrect age threshold, unsafe `log(0)`, silent complete-case deletion of covariates, lag construction without panel ordering, inappropriate post-treatment mediator control, unnecessary lag outcome changing estimand/sample, missing year fixed effects, non-clustered inference, incorrect Stata sort/group for lag, dropping unmatched outcomes without documenting them, and fragile extraction of the first coefficient rather than explicitly selecting `treated_post`.

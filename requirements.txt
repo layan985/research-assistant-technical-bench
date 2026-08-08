@@ -1,0 +1,14 @@
+pandas>=2.2
+numpy>=2.0
+scipy>=1.13
+statsmodels>=0.14
+scikit-learn>=1.5
+matplotlib>=3.8
+duckdb>=1.0
+pyarrow>=16.0
+beautifulsoup4>=4.12
+requests>=2.32
+pypdf>=5.0
+reportlab>=4.2
+psutil>=6.0
+pytest>=8.0

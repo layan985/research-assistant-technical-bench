@@ -1,0 +1,21 @@
+name: Exam attempt retrospective
+description: Record a completed timed attempt
+title: "[ATTEMPT] Task XX — YYYY-MM-DD"
+labels: ["exam-attempt"]
+body:
+  - type: input
+    id: score
+    attributes:
+      label: Score
+  - type: input
+    id: time
+    attributes:
+      label: Elapsed minutes
+  - type: textarea
+    id: failure
+    attributes:
+      label: Biggest failure mode
+  - type: textarea
+    id: next
+    attributes:
+      label: What changes before the next attempt?

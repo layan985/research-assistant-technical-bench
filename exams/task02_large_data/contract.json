@@ -1,0 +1,23 @@
+{
+  "time_limit_minutes": 90,
+  "required_stack": [
+    "DuckDB",
+    "Python"
+  ],
+  "required_outputs": [
+    "daily_region_summary.parquet",
+    "account_summary.parquet",
+    "quality.json",
+    "query.sql",
+    "run.py",
+    "README.md"
+  ],
+  "resource_target": {
+    "peak_rss_mb": 1500
+  },
+  "critical_checks": [
+    "no full pandas load",
+    "latest ingest sequence kept",
+    "reversals signed"
+  ]
+}
