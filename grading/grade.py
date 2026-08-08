@@ -28,9 +28,60 @@ def grade01(out):
     score+=15 if (out/'run.py').exists() else 0; score+=7 if (out/'README.md').exists() else 0; score+=10 if (out/'exclusions.csv').exists() else 0
     return min(100,round(score,2)),critical,notes
 
+def grade02(out):
+    req=['daily_region_summary.parquet','account_summary.parquet','quality.json','query.sql','run.py','README.md']
+    score=exists_score(out,req,10); critical=False; notes=[]
+
+    q={}
+    if (out/'quality.json').exists():
+        try: q=json.loads((out/'quality.json').read_text())
+        except Exception as e: notes.append(f'quality.json unreadable: {e}')
+        score += 4 if q.get('input_rows')==5_000_020 else 0
+        score += 4 if q.get('duplicate_event_ids_removed')==20 else 0
+        score += 4 if q.get('invalid_account_rows_excluded')==41 else 0
+        peak=q.get('peak_rss_mb')
+        score += 4 if isinstance(peak,(int,float)) and peak < 1500 else 0
+
+    expected_clean=4_999_959
+    if (out/'daily_region_summary.parquet').exists():
+        try:
+            d=pd.read_parquet(out/'daily_region_summary.parquet')
+            needed={'date','region','n_events','n_accounts','gross_amount','net_amount'}
+            score += 4 if needed.issubset(d.columns) else 0
+            score += 4 if needed.issubset(d.columns) and not d.duplicated(['date','region']).any() and int(d['n_events'].sum())==expected_clean else 0
+            if needed.issubset(d.columns) and float(d['net_amount'].sum()) >= float(d['gross_amount'].sum()):
+                notes.append('net amount does not reflect reversal signing')
+        except Exception as e: notes.append(f'daily parquet unreadable: {e}')
+
+    if (out/'account_summary.parquet').exists():
+        try:
+            a=pd.read_parquet(out/'account_summary.parquet')
+            needed={'account_id','n_events','net_amount'}
+            score += 4 if needed.issubset(a.columns) else 0
+            valid = needed.issubset(a.columns) and a['account_id'].astype(str).str.fullmatch(r'A\d{8}').all()
+            consistent = needed.issubset(a.columns) and int(a['n_events'].sum())==expected_clean and not a.duplicated('account_id').any()
+            score += 4 if valid and consistent else 0
+        except Exception as e: notes.append(f'account parquet unreadable: {e}')
+
+    run_txt=(out/'run.py').read_text().lower() if (out/'run.py').exists() else ''
+    sql_txt=(out/'query.sql').read_text().lower() if (out/'query.sql').exists() else ''
+    uses_duckdb='duckdb' in run_txt
+    full_pandas=('pandas.read_csv' in run_txt or 'pd.read_csv' in run_txt)
+    latest_ingest=bool(re.search(r'row_number\s*\(\s*\)\s*over',sql_txt,re.S)) and 'ingest_seq' in sql_txt and 'desc' in sql_txt
+    reversal_signed=('is_reversal' in sql_txt and ('-amount' in sql_txt or '- amount' in sql_txt))
+    if uses_duckdb and not full_pandas and latest_ingest and reversal_signed:
+        score += 8
+    else:
+        if not uses_duckdb: notes.append('run.py does not use DuckDB')
+        if full_pandas: notes.append('critical: full pandas CSV load detected')
+        if not latest_ingest: notes.append('critical: latest ingest-sequence deduplication not evident in SQL')
+        if not reversal_signed: notes.append('critical: reversal signing not evident in SQL')
+        critical = full_pandas or not latest_ingest or not reversal_signed
+
+    return min(100,round(score,2)),critical,notes
+
 def grade_generic(task,out):
     contracts={
-    '02':['daily_region_summary.parquet','account_summary.parquet','quality.json','query.sql','run.py','README.md'],
     '03':['event_study.csv','event_study.png','regression_notes.md','run.py','robustness.csv'],
     '04':['documents.parquet','failures.csv','quality.json','run.py','README.md'],
     '05':['predictions.parquet','embeddings.parquet','metrics.json','model_card.md','run.py'],
@@ -51,5 +102,7 @@ def grade_generic(task,out):
     return min(100,round(score,2)),critical,notes
 
 p=argparse.ArgumentParser(); p.add_argument('task',choices=[f'{i:02d}' for i in range(1,7)]); p.add_argument('--attempt',default='latest'); a=p.parse_args(); path=attempt_path(a.task,a.attempt); out=path/'outputs'
-score,critical,notes=grade01(out) if a.task=='01' else grade_generic(a.task,out)
+if a.task=='01': score,critical,notes=grade01(out)
+elif a.task=='02': score,critical,notes=grade02(out)
+else: score,critical,notes=grade_generic(a.task,out)
 result={'task':a.task,'score':score,'critical_fail':critical,'notes':notes}; (path/'GRADE.json').write_text(json.dumps(result,indent=2)); print(json.dumps(result,indent=2))
