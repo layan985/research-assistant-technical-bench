@@ -1,0 +1,40 @@
+{
+  "validation_type": "automated_system_smoke_test",
+  "human_performance_score": false,
+  "task": "01",
+  "run_date": "2026-08-08",
+  "elapsed_minutes": 1.1,
+  "grade": {
+    "score": 100,
+    "critical_fail": false,
+    "notes": []
+  },
+  "structural_checks": {
+    "final_row_count": 1600,
+    "unique_firms": 200,
+    "unique_quarters": 8,
+    "duplicate_panel_keys": 0,
+    "missing_analytical_fields": 0,
+    "adopting_firms": 120,
+    "absorbing_state_violations": 0
+  },
+  "source_audit": {
+    "firm_master_duplicate_firm_ids": 1,
+    "employment_superseded_corrections": 4,
+    "financials_superseded_corrections": 3,
+    "adoption_exact_duplicate_events": 1,
+    "employment_invalid_firm_id": 1,
+    "financials_invalid_firm_id": 1,
+    "adoption_invalid_firm_id": 1,
+    "adoption_invalid_date": 1
+  },
+  "output_sha256": {
+    "README.md": "9b39de69279b0ec2df72b407408ed433166bb297c79db31674abe89ee381673a",
+    "data_quality.json": "bf82dc1684dccdb3436705178245034a82a8c487bab4ab1492618eb2b174908b",
+    "exclusions.csv": "04e2364dd76fcadf3b13e99b831ebe37429adef11d6ec995b2a811d956c02b69",
+    "panel.csv": "e92f57072f6427c647e31af9fcf5349fdc0776ab5bb6d91a29c048bd98fcad2c",
+    "run.py": "4cc149ca3304866708245e1892d7a3b43915fd438ac361e7b56be0fa9691fb28",
+    "summary_stats.csv": "46b9c1db2ac51077ff14b0d476a2d15c0b0bc1630ef173c87dae92ef7801023d"
+  },
+  "integrity_note": "This run was executed automatically by the assistant to validate the benchmark and grader. The elapsed time and score must not be presented as the user's own timed predoc performance."
+}
