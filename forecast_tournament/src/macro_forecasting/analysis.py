@@ -31,56 +31,63 @@ def data_audit(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def relative_cells(
-    metrics: pd.DataFrame,
+    paired: pd.DataFrame,
     truth_mode: str,
     baseline: str = "naive_last",
     regime: str = "all",
 ) -> pd.DataFrame:
-    """Normalize accuracy to the naive benchmark within target × horizon cells."""
-    if metrics.empty:
+    """Select precomputed pairwise-relative evaluation cells.
+
+    Scores must already have been built from exact model/baseline common-origin
+    intersections by ``evaluation.paired_relative_cells``. This function intentionally
+    does not recompute a denominator from model-specific aggregate metrics.
+    """
+    if paired.empty:
         return pd.DataFrame()
-    x = metrics[(metrics["truth_mode"] == truth_mode) & (metrics["regime"] == regime)].copy()
-    if x.empty:
-        return pd.DataFrame()
-    base = x[x["model"] == baseline][["target", "horizon", "rmse", "crps"]].rename(
-        columns={"rmse": "baseline_rmse", "crps": "baseline_crps"}
-    )
-    x = x.merge(base, on=["target", "horizon"], how="inner")
-    x = x[(x["baseline_rmse"] > 0) & (x["baseline_crps"] > 0)].copy()
-    if x.empty:
-        return x
-    x["rmse_rel"] = x["rmse"] / x["baseline_rmse"]
-    x["crps_rel"] = x["crps"] / x["baseline_crps"]
-    x["combined_rel"] = 0.60 * x["rmse_rel"] + 0.40 * x["crps_rel"]
+    x = paired[
+        (paired["truth_mode"] == truth_mode)
+        & (paired["regime"] == regime)
+        & (paired["baseline"] == baseline)
+    ].copy()
     return x
 
 
 def complexity_failure_report(
-    metrics: pd.DataFrame,
+    paired: pd.DataFrame,
     dm: pd.DataFrame,
     truth_mode: str = "first_release",
     baseline: str = "naive_last",
 ) -> pd.DataFrame:
-    """Quantify how often each model beats naive and whether those wins survive inference."""
-    rel = relative_cells(metrics, truth_mode=truth_mode, baseline=baseline, regime="all")
+    """Quantify gains over naive together with explicit forecast-fit failures."""
+    rel = relative_cells(paired, truth_mode=truth_mode, baseline=baseline, regime="all")
     if rel.empty:
         return pd.DataFrame()
-    report = (
-        rel.groupby("model", as_index=False)
-        .agg(
-            cells=("combined_rel", "size"),
-            mean_score=("combined_rel", "mean"),
-            median_score=("combined_rel", "median"),
-            mean_rmse_rel=("rmse_rel", "mean"),
-            mean_crps_rel=("crps_rel", "mean"),
-            share_cells_beating_naive=("combined_rel", lambda s: float((s < 1.0).mean())),
-            share_rmse_beating_naive=("rmse_rel", lambda s: float((s < 1.0).mean())),
-            best_cell_score=("combined_rel", "min"),
-            worst_cell_score=("combined_rel", "max"),
-            mean_abs_90pct_coverage_error=("coverage90", lambda s: float((s - 0.90).abs().mean())),
-            runtime_s=("runtime_s", "sum"),
+    rows = []
+    for model, g in rel.groupby("model", dropna=False):
+        scored = g[g["combined_rel"].notna()]
+        common = int(g["n_common"].sum())
+        base_n = int(g["baseline_n"].sum())
+        rows.append(
+            {
+                "model": model,
+                "cells": int(len(scored)),
+                "mean_score": float(scored["combined_rel"].mean()) if len(scored) else np.nan,
+                "median_score": float(scored["combined_rel"].median()) if len(scored) else np.nan,
+                "mean_rmse_rel": float(scored["rmse_rel"].mean()) if len(scored) else np.nan,
+                "mean_crps_rel": float(scored["crps_rel"].mean()) if len(scored) else np.nan,
+                "share_cells_beating_naive": float((scored["combined_rel"] < 1.0).mean()) if len(scored) else np.nan,
+                "share_rmse_beating_naive": float((scored["rmse_rel"] < 1.0).mean()) if len(scored) else np.nan,
+                "best_cell_score": float(scored["combined_rel"].min()) if len(scored) else np.nan,
+                "worst_cell_score": float(scored["combined_rel"].max()) if len(scored) else np.nan,
+                "mean_abs_90pct_coverage_error": float((scored["coverage90"] - 0.90).abs().mean()) if len(scored) else np.nan,
+                "runtime_s": float(g["runtime_s"].sum()),
+                "common_origins": common,
+                "baseline_origins": base_n,
+                "failure_count": int(g["failure_count"].sum()),
+                "success_share_vs_baseline": float(common / base_n) if base_n else np.nan,
+            }
         )
-    )
+    report = pd.DataFrame(rows)
     if not dm.empty:
         d = dm[dm["truth_mode"] == truth_mode].copy()
         d["significant_win"] = (d["p_holm"] < 0.05) & (d["mean_loss_diff"] < 0)
@@ -100,36 +107,40 @@ def complexity_failure_report(
         report[c] = report[c].fillna(0).astype(int)
     report["net_significant_wins"] = report["significant_wins"] - report["significant_losses"]
     report["beats_naive_on_average"] = report["mean_score"] < 1.0
-    return report.sort_values(["mean_score", "runtime_s"]).reset_index(drop=True)
+    return report.sort_values(["mean_score", "runtime_s"], na_position="last").reset_index(drop=True)
 
 
 def revision_instability(
-    metrics: pd.DataFrame,
+    paired: pd.DataFrame,
     first_mode: str = "first_release",
     revised_mode: str = "latest",
     baseline: str = "naive_last",
 ) -> pd.DataFrame:
-    """Show how rankings change when evaluation uses revised rather than first-release truth."""
-    first = relative_cells(metrics, first_mode, baseline, "all")
-    revised = relative_cells(metrics, revised_mode, baseline, "all")
+    """Show how paired rankings change under revised rather than first-release truth."""
+    first = relative_cells(paired, first_mode, baseline, "all")
+    revised = relative_cells(paired, revised_mode, baseline, "all")
     if first.empty or revised.empty:
         return pd.DataFrame()
     first = first.copy()
     revised = revised.copy()
     first["rank_first"] = first.groupby(["target", "horizon"])["combined_rel"].rank(method="min")
     revised["rank_revised"] = revised.groupby(["target", "horizon"])["combined_rel"].rank(method="min")
-    f = first[["target", "horizon", "model", "combined_rel", "rmse_rel", "crps_rel", "rank_first"]].rename(
+    f = first[["target", "horizon", "model", "combined_rel", "rmse_rel", "crps_rel", "rank_first", "failure_count", "success_share_vs_baseline"]].rename(
         columns={
             "combined_rel": "score_first",
             "rmse_rel": "rmse_rel_first",
             "crps_rel": "crps_rel_first",
+            "failure_count": "failure_count_first",
+            "success_share_vs_baseline": "success_share_first",
         }
     )
-    r = revised[["target", "horizon", "model", "combined_rel", "rmse_rel", "crps_rel", "rank_revised"]].rename(
+    r = revised[["target", "horizon", "model", "combined_rel", "rmse_rel", "crps_rel", "rank_revised", "failure_count", "success_share_vs_baseline"]].rename(
         columns={
             "combined_rel": "score_revised",
             "rmse_rel": "rmse_rel_revised",
             "crps_rel": "crps_rel_revised",
+            "failure_count": "failure_count_revised",
+            "success_share_vs_baseline": "success_share_revised",
         }
     )
     out = f.merge(r, on=["target", "horizon", "model"], how="inner")
@@ -152,15 +163,15 @@ def revision_instability(
 
 
 def regime_comparison(
-    metrics: pd.DataFrame,
+    paired: pd.DataFrame,
     truth_mode: str = "first_release",
     baseline: str = "naive_last",
 ) -> pd.DataFrame:
-    """Compare relative forecast skill across business-cycle and volatility regimes."""
+    """Compare paired relative forecast skill across cycle and volatility regimes."""
     regimes = ["recession", "expansion", "high_volatility", "normal_volatility"]
     pieces = []
     for regime in regimes:
-        rel = relative_cells(metrics, truth_mode=truth_mode, baseline=baseline, regime=regime)
+        rel = relative_cells(paired, truth_mode=truth_mode, baseline=baseline, regime=regime)
         if rel.empty:
             continue
         agg = rel.groupby("model", as_index=False)["combined_rel"].mean().rename(
@@ -200,7 +211,7 @@ def pareto_frontier(leaderboard: pd.DataFrame) -> pd.DataFrame:
 
 
 def research_summary(results: dict[str, Any], baseline: str = "naive_last") -> str:
-    """Generate a compact, result-driven memo without inventing unavailable findings."""
+    """Generate a compact, result-driven memo without hiding fit failures."""
     board = results.get("leaderboard", pd.DataFrame())
     complexity = results.get("complexity_report", pd.DataFrame())
     revisions = results.get("revision_instability", pd.DataFrame())
@@ -209,7 +220,7 @@ def research_summary(results: dict[str, Any], baseline: str = "naive_last") -> s
     lines = [
         "# Macro Forecasting Tournament — Generated Research Summary",
         "",
-        "This memo is generated mechanically from the frozen forecast ledger. It is not hand-edited to favor a model.",
+        "This memo is generated mechanically from the sealed forecast ledger. Relative scores use identical model-versus-naive successful origins; fit failures remain separately visible.",
         "",
     ]
     if board.empty:
@@ -221,8 +232,9 @@ def research_summary(results: dict[str, Any], baseline: str = "naive_last") -> s
     lines += [
         "## Headline",
         "",
-        f"The best average model is **{top['model']}** with a naive-relative combined score of **{top['score']:.3f}**. ",
+        f"The best average model is **{top['model']}** with a paired naive-relative combined score of **{top['score']:.3f}**. ",
         f"**{beats} of {len(board)}** evaluated models beat `{baseline}` on the average combined score.",
+        f"The winning model retains **{top['success_share_vs_baseline']:.1%}** of baseline-evaluable origins and records **{int(top['failure_count'])}** missing/failed headline forecasts across cells.",
         "",
     ]
 
@@ -234,7 +246,7 @@ def research_summary(results: dict[str, Any], baseline: str = "naive_last") -> s
             lines += [
                 "## Robustness of wins",
                 "",
-                f"The most consistently better-than-naive model across target × horizon cells is **{most_consistent['model']}**, beating naive in **{most_consistent['share_cells_beating_naive']:.1%}** of cells.",
+                f"The most consistently better-than-naive model across target × horizon cells is **{most_consistent['model']}**, beating naive in **{most_consistent['share_cells_beating_naive']:.1%}** of scored cells.",
                 f"The strongest multiplicity-adjusted DM record belongs to **{sig['model']}** with **{int(sig['significant_wins'])} significant wins** and **{int(sig['significant_losses'])} significant losses**.",
                 "",
             ]
@@ -261,7 +273,7 @@ def research_summary(results: dict[str, Any], baseline: str = "naive_last") -> s
     lines += [
         "## Interpretation rule",
         "",
-        "Do not promote a model because it wins one target, one horizon, one regime, or revised-data evaluation. The benchmark is designed to reward gains that survive real-time information sets, naive comparison, probabilistic scoring, and statistical inference.",
+        "Do not promote a model because it wins one target, one horizon, one regime, or revised-data evaluation. The benchmark rewards gains that survive real-time information sets, identical-origin naive comparison, probabilistic scoring, failure disclosure, and statistical inference.",
         "",
     ]
     return "\n".join(lines)
