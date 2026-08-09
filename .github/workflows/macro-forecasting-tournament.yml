@@ -1,5 +1,6 @@
 name: macro-forecasting-tournament
 
+# Execution trigger marker: frozen protocol v1.0.0; no statistical settings changed.
 on:
   pull_request:
     paths:
