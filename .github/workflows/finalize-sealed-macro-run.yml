@@ -1,0 +1,66 @@
+name: finalize-sealed-macro-run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/finalize-sealed-macro-run.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: forecast_tournament
+    steps:
+      - name: Checkout exact forecast-generating commit
+        uses: actions/checkout@v4
+        with:
+          ref: ba5cbcb974802ac258fc3c7da3204a4a7a7fc318
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: forecast_tournament/pyproject.toml
+      - name: Install frozen package plus Markdown formatter dependency
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pip install "tabulate>=0.9"
+      - name: Download sealed vintage database from canonical run
+        uses: actions/download-artifact@v4
+        with:
+          name: macro-vintage-database
+          path: forecast_tournament/data
+          run-id: 31324910141
+          github-token: ${{ github.token }}
+      - name: Download all 12 sealed forecast shards from canonical run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: macro-forecast-shard-*
+          path: forecast_tournament/shards
+          merge-multiple: true
+          run-id: 31324910141
+          github-token: ${{ github.token }}
+      - name: Build aggregate tables from sealed forecasts
+        env:
+          GITHUB_SHA: ba5cbcb974802ac258fc3c7da3204a4a7a7fc318
+        run: >-
+          macro-tournament finalize
+          --config config/us_monthly.yml
+          --data data/vintages.csv
+          --forecasts-dir shards
+          --output-dir results
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macro-forecasting-results
+          path: |
+            forecast_tournament/results/*.csv
+            forecast_tournament/results/*.md
+            forecast_tournament/results/*.json
+            forecast_tournament/results/*.yml
+          if-no-files-found: error
