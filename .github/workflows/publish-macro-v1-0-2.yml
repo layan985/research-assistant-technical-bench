@@ -1,0 +1,117 @@
+name: publish-macro-v1-0-2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-macro-v1-0-2.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RESULT_RUN_ID: "31327488220"
+      FORECAST_RUN_ID: "31324910141"
+      FORECAST_SOURCE_SHA: "ba5cbcb974802ac258fc3c7da3204a4a7a7fc318"
+      EVALUATION_SHA: "f7820ac5a9d16126f2e637372e1c81540200bcfc"
+      RESULT_ARTIFACT_SHA256: "df30e88541111d728bd5a24181e0d2570d87dd36ef0f20fa8b7ca275029b81f9"
+      VINTAGE_ARTIFACT_SHA256: "7207f98c3a96bfe7c9cd35693ff06a9e40a7d81794f071850b52651467c1bfec"
+      TAG: "macro-tournament-v1.0.2-2026-08-09"
+      DEST: "forecast_tournament/results/runs/2026-08-09-protocol-1.0.2"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download audited v1.0.2 result bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: macro-forecasting-results-v1.0.2
+          path: published_artifact
+          run-id: 31327488220
+          github-token: ${{ github.token }}
+      - name: Publish compact auditable tables into repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$DEST"
+          for file in \
+            leaderboard.csv leaderboard.md relative_cells.csv metrics.csv dm.csv \
+            complexity_report.csv revision_instability.csv regime_comparison.csv \
+            pareto_frontier.csv data_audit.csv research_summary.md \
+            config_frozen.yml run_manifest.json; do
+            cp "published_artifact/$file" "$DEST/$file"
+          done
+          cat > "$DEST/PROVENANCE.md" <<'EOF'
+          # Macro Forecasting Tournament v1.0.2 — Provenance
+
+          This directory is the audited publication snapshot for the first real-time U.S. monthly macro forecasting tournament.
+
+          - Protocol: `1.0.2`
+          - Headline truth: first release
+          - Targets: CPI inflation, unemployment, industrial production
+          - Horizons: 1, 3, 6, 12 months
+          - Model field: 14 frozen default models
+          - Forecast-generating commit: `ba5cbcb974802ac258fc3c7da3204a4a7a7fc318`
+          - Canonical forecast Actions run: `31324910141`
+          - Evaluation commit: `f7820ac5a9d16126f2e637372e1c81540200bcfc`
+          - Corrected evaluation Actions run: `31327488220`
+          - Result artifact digest: `sha256:df30e88541111d728bd5a24181e0d2570d87dd36ef0f20fa8b7ca275029b81f9`
+          - Vintage Actions artifact digest: `sha256:7207f98c3a96bfe7c9cd35693ff06a9e40a7d81794f071850b52651467c1bfec`
+          - Frozen vintage database SHA-256: `015971240a2c1b34e5c18876afc9e9c267a0c09388e93715a6bf2b8d4503a706`
+          - Full sealed forecast ledger: attached to the GitHub release as `macro-forecasting-results-v1.0.2.zip`; it is intentionally not committed as a ~59 MB CSV to avoid repository bloat.
+
+          ## Evaluation correction
+
+          Protocol v1.0.2 does not refit forecasts. It corrects the post-forecast relative-score layer so every model and `naive_last` are compared on the exact same successful origins inside each truth × target × horizon × regime cell. Fit failures remain visible through `failure_count`, `n_common`, `baseline_n`, and `success_share_vs_baseline`.
+
+          The v1.0.2 `forecasts.csv` and `dm.csv` are byte-for-byte identical to the superseded v1.0.1 aggregate artifact. Only relative evaluation and downstream summaries were corrected.
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$DEST"
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish macro tournament protocol v1.0.2 results"
+            git push origin HEAD:main
+          fi
+      - name: Package full sealed forecast ledger for release
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd published_artifact && zip -q -r ../macro-forecasting-results-v1.0.2.zip .)
+          sha256sum macro-forecasting-results-v1.0.2.zip > macro-forecasting-results-v1.0.2.zip.sha256
+          cat > RELEASE_NOTES.md <<'EOF'
+          ## Macro Forecasting Tournament — protocol v1.0.2
+
+          First audited public run of the real-time U.S. monthly macro forecasting tournament.
+
+          **Headline first-release ranking:** Dynamic Factor ranks first with a paired naive-relative score of **0.9659**, Bayesian VAR second at **0.9855**, and `naive_last` is fixed at **1.0000**. Dynamic Factor beats naive in **11 of 12** target × horizon cells, but records **32 failed headline forecasts** corresponding to eight GFC-era INDPRO origins repeated across four horizons, retaining **98.88%** of baseline-evaluable origins. BVAR has **zero fit failures**.
+
+          **Inference:** only Dynamic Factor at INDPRO, 1-month horizon produces a model-vs-naive improvement that survives the predeclared Holm-adjusted Diebold–Mariano test. BVAR's average gain does not translate into a Holm-significant cell.
+
+          **Negative results matter:** naive drift is slightly worse than naive last on average; regularized and tree models underperform naive on the aggregate score; unrestricted VAR is numerically catastrophic on average. Revised-data evaluation changes the winning model in **3 of 12** cells.
+
+          Protocol v1.0.2 is an evaluation-only correction applied to the exact sealed forecasts generated at `ba5cbcb974802ac258fc3c7da3204a4a7a7fc318`. It pairs every model and `naive_last` on identical successful origins before computing relative RMSE/CRPS, while reporting fit failures separately. No forecasts were refit after the original matrix was observed.
+
+          The attached ZIP contains the full forecast ledger, leaderboard, raw metrics, paired relative cells, DM/Holm results, revision/regime diagnostics, data audit, frozen config, generated research summary, and manifest with SHA-256 hashes.
+          EOF
+      - name: Create versioned GitHub release with full ledger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" macro-forecasting-results-v1.0.2.zip macro-forecasting-results-v1.0.2.zip.sha256 --clobber
+          else
+            gh release create "$TAG" \
+              macro-forecasting-results-v1.0.2.zip \
+              macro-forecasting-results-v1.0.2.zip.sha256 \
+              --target main \
+              --title "Macro Forecasting Tournament v1.0.2 — 2026-08-09" \
+              --notes-file RELEASE_NOTES.md
+          fi
