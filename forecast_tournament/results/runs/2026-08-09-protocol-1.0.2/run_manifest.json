@@ -1,0 +1,47 @@
+{
+  "benchmark_name": "us_monthly_real_time",
+  "benchmark_protocol_version": "1.0.2",
+  "config": {
+    "frozen_copy": "config_frozen.yml",
+    "sha256": "9b4b61a40fe5a08b7e678f56ea30e4961c026c8ce5ce39dc50132172d0969294",
+    "source_name": "us_monthly.yml"
+  },
+  "forecast_source_sha": "ba5cbcb974802ac258fc3c7da3204a4a7a7fc318",
+  "generated_at_utc": "2026-08-09T17:51:54.192903+00:00",
+  "git_sha": "f7820ac5a9d16126f2e637372e1c81540200bcfc",
+  "package_versions": {
+    "PyYAML": "6.0.3",
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "requests": "2.34.2",
+    "scikit-learn": "1.9.0",
+    "scipy": "1.18.0",
+    "statsmodels": "0.14.6",
+    "tabulate": "0.10.0"
+  },
+  "platform": "Linux-6.17.0-1020-azure-x86_64-with-glibc2.39",
+  "python_version": "3.12.13",
+  "result_sha256": {
+    "README.md": "064fe931dd85b40b8a201987b2df7e8daa49ce24308acf6faca36f794f85e123",
+    "complexity_report.csv": "db0ebc3175045abb8baddef8230057a8e4d5c169697082630d914e110b37a67c",
+    "config_frozen.yml": "9b4b61a40fe5a08b7e678f56ea30e4961c026c8ce5ce39dc50132172d0969294",
+    "data_audit.csv": "b10394ecddd9c6eac965fd29e8af7963500015933720c339a2337e95ffa05f52",
+    "dm.csv": "d840a03aa5fdbcc05d47f0937df8544e3af56cd233b004c8525a14464897ca7c",
+    "forecasts.csv": "0e73bff806eaa6de65f97b93ed674823784f46944d051e3d3b2d9132c4e8d1b4",
+    "leaderboard.csv": "dcc6ac2fe8839676e4b79948fc0d124af2802da4550f3b844dcc83f22e5edfc8",
+    "leaderboard.md": "0827295240d088e04d494e3623646fdae2ef6ac3d99bbadd19c2bdfabc2c1363",
+    "leaderboard.schema.csv": "be58a7d8a82e221f08d929af9f3091a8cb3588e04b5b2d6b7b993af8e850dcbf",
+    "metrics.csv": "7621f2ce931959a5c72ddff0a38711039c51b8d28de00cf526d1f809e76ee2cb",
+    "pareto_frontier.csv": "0f9ea4a3ac8677a4f0223d6b4618f2fe6363530fef4fcb0bc343a323240bd0b3",
+    "regime_comparison.csv": "2189b4144b0703481efaf2f928a47cd94369fd254e512c6dfec7e5081a7bba6c",
+    "relative_cells.csv": "5a2288755ccc6e6fb82092ce132c084b4555b140c9441a1018c9d37291f02957",
+    "research_summary.md": "620632cf6c168175b643192d49b07706bd9fb6e51eb77d7edac9d67899aa58f3",
+    "revision_instability.csv": "288f61b39d7cf2442636c0f5ed95534e6f6a41843acaa060d286c9dc7b9606f9"
+  },
+  "schema_version": 2,
+  "vintage_database": {
+    "bytes": 37480122,
+    "sha256": "015971240a2c1b34e5c18876afc9e9c267a0c09388e93715a6bf2b8d4503a706",
+    "source_name": "vintages.csv"
+  }
+}
