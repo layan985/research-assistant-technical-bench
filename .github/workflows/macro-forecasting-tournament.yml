@@ -35,7 +35,7 @@ jobs:
       - run: pytest
 
   live-tournament:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_run }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.live_run) }}
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 360
@@ -45,18 +45,33 @@ jobs:
     env:
       FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
     steps:
+      - name: Check live-run credential
+        id: live_gate
+        shell: bash
+        run: |
+          if [ -z "$FRED_API_KEY" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Live tournament skipped::Repository secret FRED_API_KEY is not configured. Protocol v1 remains frozen; no empirical rankings were generated."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "FRED_API_KEY is configured; executing frozen protocol v1.0.0."
+          fi
       - uses: actions/checkout@v4
+        if: steps.live_gate.outputs.enabled == 'true'
       - uses: actions/setup-python@v5
+        if: steps.live_gate.outputs.enabled == 'true'
         with:
           python-version: "3.12"
       - run: python -m pip install -e ".[dev]"
-      - name: Require FRED API key
-        run: test -n "$FRED_API_KEY" || (echo "Set repository secret FRED_API_KEY before a live run" && exit 1)
+        if: steps.live_gate.outputs.enabled == 'true'
       - name: Download frozen vintage database
+        if: steps.live_gate.outputs.enabled == 'true'
         run: macro-tournament download --config config/us_monthly.yml --output data/vintages.csv
       - name: Run full tournament
+        if: steps.live_gate.outputs.enabled == 'true'
         run: macro-tournament run --config config/us_monthly.yml --data data/vintages.csv --output-dir results
       - uses: actions/upload-artifact@v4
+        if: steps.live_gate.outputs.enabled == 'true'
         with:
           name: macro-forecasting-results
           path: |
