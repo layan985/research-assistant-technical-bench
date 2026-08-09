@@ -9,6 +9,14 @@ import pandas as pd
 import yaml
 from scipy.stats import norm
 
+from .analysis import (
+    complexity_failure_report,
+    data_audit,
+    pareto_frontier,
+    regime_comparison,
+    research_summary,
+    revision_instability,
+)
 from .data import VintagePanel, transform_series
 from .evaluation import aggregate_metrics, build_leaderboard, crps_gaussian, dm_table, gaussian_quantile
 from .features import build_supervised_origin
@@ -88,10 +96,6 @@ def run_tournament(panel: VintagePanel, config: dict[str, Any]) -> dict[str, pd.
 
     rows: list[dict[str, Any]] = []
     seen_origin: set[tuple[str, pd.Timestamp]] = set()
-    # Origins are fixed by the benchmark schedule, not by release/revision dates in
-    # the database. This prevents exact first-release rows from changing the
-    # evaluation calendar. snapshot(vintage) still admits every release known by
-    # that scheduled cutoff.
     vintages = pd.date_range(bench["vintage_start"], bench["vintage_end"], freq="ME")
 
     for vintage in vintages:
@@ -183,9 +187,25 @@ def run_tournament(panel: VintagePanel, config: dict[str, Any]) -> dict[str, pd.
 
     forecasts = pd.DataFrame(rows)
     metrics = aggregate_metrics(forecasts) if not forecasts.empty else pd.DataFrame()
-    leaderboard = build_leaderboard(metrics, truth_mode=bench.get("leaderboard_truth", truth_modes[0])) if not metrics.empty else pd.DataFrame()
+    primary_truth = bench.get("leaderboard_truth", truth_modes[0])
+    leaderboard = build_leaderboard(metrics, truth_mode=primary_truth) if not metrics.empty else pd.DataFrame()
     dm = dm_table(forecasts) if not forecasts.empty else pd.DataFrame()
-    return {"forecasts": forecasts, "metrics": metrics, "leaderboard": leaderboard, "dm": dm}
+    complexity = complexity_failure_report(metrics, dm, truth_mode=primary_truth) if not metrics.empty else pd.DataFrame()
+    revisions = revision_instability(metrics) if not metrics.empty and {"first_release", "latest"}.issubset(set(truth_modes)) else pd.DataFrame()
+    regimes = regime_comparison(metrics, truth_mode=primary_truth) if not metrics.empty else pd.DataFrame()
+    pareto = pareto_frontier(leaderboard) if not leaderboard.empty else pd.DataFrame()
+    audit = data_audit(panel.frame)
+    return {
+        "forecasts": forecasts,
+        "metrics": metrics,
+        "leaderboard": leaderboard,
+        "dm": dm,
+        "complexity_report": complexity,
+        "revision_instability": revisions,
+        "regime_comparison": regimes,
+        "pareto_frontier": pareto,
+        "data_audit": audit,
+    }
 
 
 def write_results(results: dict[str, pd.DataFrame], output_dir: str | Path) -> None:
@@ -195,3 +215,4 @@ def write_results(results: dict[str, pd.DataFrame], output_dir: str | Path) -> N
         frame.to_csv(output / f"{name}.csv", index=False)
     if not results["leaderboard"].empty:
         (output / "leaderboard.md").write_text(results["leaderboard"].to_markdown(index=False), encoding="utf-8")
+    (output / "research_summary.md").write_text(research_summary(results), encoding="utf-8")
