@@ -62,6 +62,13 @@ def diebold_mariano(
 
 
 def aggregate_metrics(forecasts: pd.DataFrame) -> pd.DataFrame:
+    """Descriptive model metrics on each model's successful forecast rows.
+
+    These raw metrics are useful for calibration and failure diagnostics, but they are
+    deliberately *not* used for naive-relative ranking because models can have
+    different successful-origin sets. Relative scoring is handled by
+    :func:`paired_relative_cells` on exact model/baseline intersections.
+    """
     ok = forecasts[forecasts["status"] == "ok"].copy()
     if ok.empty:
         return pd.DataFrame()
@@ -95,33 +102,189 @@ def aggregate_metrics(forecasts: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def build_leaderboard(metrics: pd.DataFrame, truth_mode: str, baseline: str = "naive_last") -> pd.DataFrame:
-    overall = metrics[(metrics["truth_mode"] == truth_mode) & (metrics["regime"] == "all")].copy()
+def _unique_origin_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """Require one row per origin inside one exact evaluation cell/model."""
+    if frame.empty:
+        return frame
+    duplicate = frame.duplicated(["origin_date"], keep=False)
+    if duplicate.any():
+        sample = frame.loc[duplicate, "origin_date"].astype(str).head(3).tolist()
+        raise ValueError(f"duplicate forecast origins inside evaluation cell: {sample}")
+    return frame
+
+
+def paired_relative_cells(
+    forecasts: pd.DataFrame,
+    baseline: str = "naive_last",
+) -> pd.DataFrame:
+    """Compute model-vs-naive scores on identical successful forecast origins.
+
+    Protocol v1.0.2 rule: within every truth × target × horizon × regime cell, a
+    model's RMSE/CRPS and the baseline RMSE/CRPS are computed on the exact same
+    successful-origin intersection. Failed or absent model forecasts are never silently
+    removed from the denominator and never assigned an invented loss penalty; instead
+    they are reported via ``failure_count`` and ``success_share_vs_baseline``.
+    """
+    if forecasts.empty:
+        return pd.DataFrame()
+    required = {
+        "truth_mode",
+        "target",
+        "horizon",
+        "model",
+        "regime",
+        "origin_date",
+        "target_date",
+        "error",
+        "crps",
+        "covered80",
+        "covered90",
+        "width80",
+        "width90",
+        "pit",
+        "runtime_s",
+        "status",
+    }
+    missing = required - set(forecasts.columns)
+    if missing:
+        raise ValueError(f"paired scoring missing forecast columns: {sorted(missing)}")
+
+    rows: list[dict[str, object]] = []
+    cell_cols = ["truth_mode", "target", "horizon", "regime"]
+    for keys, cell in forecasts.groupby(cell_cols, dropna=False):
+        truth_mode, target, horizon, regime = keys
+        base_all = _unique_origin_rows(cell[cell["model"] == baseline].copy())
+        base_ok = base_all[
+            (base_all["status"] == "ok")
+            & base_all["error"].notna()
+            & base_all["crps"].notna()
+        ].copy()
+        if base_ok.empty:
+            continue
+        baseline_n = int(base_ok["origin_date"].nunique())
+        base_keep = base_ok[
+            ["origin_date", "target_date", "error", "crps"]
+        ].rename(columns={"error": "baseline_error", "crps": "baseline_crps"})
+
+        for model, model_all in cell.groupby("model", dropna=False):
+            model_all = _unique_origin_rows(model_all.copy())
+            model_ok = model_all[
+                (model_all["status"] == "ok")
+                & model_all["error"].notna()
+                & model_all["crps"].notna()
+            ].copy()
+            joined = model_ok.merge(
+                base_keep,
+                on=["origin_date", "target_date"],
+                how="inner",
+                validate="one_to_one",
+            )
+            n_common = int(len(joined))
+            failure_count = int(max(baseline_n - n_common, 0))
+            success_share = float(n_common / baseline_n) if baseline_n else np.nan
+
+            if n_common:
+                model_rmse = float(np.sqrt(np.mean(np.square(joined["error"]))))
+                baseline_rmse = float(np.sqrt(np.mean(np.square(joined["baseline_error"]))))
+                model_crps = float(joined["crps"].mean())
+                baseline_crps = float(joined["baseline_crps"].mean())
+                rmse_rel = model_rmse / baseline_rmse if baseline_rmse > 0 else np.nan
+                crps_rel = model_crps / baseline_crps if baseline_crps > 0 else np.nan
+                combined_rel = (
+                    0.60 * rmse_rel + 0.40 * crps_rel
+                    if np.isfinite(rmse_rel) and np.isfinite(crps_rel)
+                    else np.nan
+                )
+                coverage80 = float(joined["covered80"].mean())
+                coverage90 = float(joined["covered90"].mean())
+                width80 = float(joined["width80"].mean())
+                width90 = float(joined["width90"].mean())
+                pit = joined["pit"].dropna()
+                pit_mean = float(pit.mean()) if len(pit) else np.nan
+                pit_var = float(pit.var(ddof=1)) if len(pit) >= 2 else np.nan
+                pit_ks_p = float(kstest(pit, "uniform").pvalue) if len(pit) >= 8 else np.nan
+            else:
+                model_rmse = baseline_rmse = model_crps = baseline_crps = np.nan
+                rmse_rel = crps_rel = combined_rel = np.nan
+                coverage80 = coverage90 = width80 = width90 = np.nan
+                pit_mean = pit_var = pit_ks_p = np.nan
+
+            rows.append(
+                {
+                    "truth_mode": truth_mode,
+                    "target": target,
+                    "horizon": int(horizon),
+                    "model": model,
+                    "baseline": baseline,
+                    "regime": regime,
+                    "n_common": n_common,
+                    "baseline_n": baseline_n,
+                    "failure_count": failure_count,
+                    "success_share_vs_baseline": success_share,
+                    "rmse": model_rmse,
+                    "baseline_rmse": baseline_rmse,
+                    "rmse_rel": rmse_rel,
+                    "crps": model_crps,
+                    "baseline_crps": baseline_crps,
+                    "crps_rel": crps_rel,
+                    "combined_rel": combined_rel,
+                    "coverage80": coverage80,
+                    "coverage90": coverage90,
+                    "width80": width80,
+                    "width90": width90,
+                    "pit_mean": pit_mean,
+                    "pit_var": pit_var,
+                    "pit_ks_p": pit_ks_p,
+                    "runtime_s": float(model_all["runtime_s"].fillna(0.0).sum()),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def build_leaderboard(
+    relative_cells: pd.DataFrame,
+    truth_mode: str,
+    baseline: str = "naive_last",
+) -> pd.DataFrame:
+    """Aggregate already-paired target × horizon scores into the public leaderboard."""
+    overall = relative_cells[
+        (relative_cells["truth_mode"] == truth_mode)
+        & (relative_cells["regime"] == "all")
+    ].copy()
     if overall.empty:
         return pd.DataFrame()
-    base = overall[overall["model"] == baseline][["target", "horizon", "rmse", "crps"]].rename(
-        columns={"rmse": "baseline_rmse", "crps": "baseline_crps"}
-    )
-    x = overall.merge(base, on=["target", "horizon"], how="inner")
-    x["rmse_rel"] = x["rmse"] / x["baseline_rmse"]
-    x["crps_rel"] = x["crps"] / x["baseline_crps"]
-    x["combined_rel"] = 0.60 * x["rmse_rel"] + 0.40 * x["crps_rel"]
-    board = (
-        x.groupby("model", as_index=False)
-        .agg(
-            score=("combined_rel", "mean"),
-            rmse_rel=("rmse_rel", "mean"),
-            crps_rel=("crps_rel", "mean"),
-            coverage80=("coverage80", "mean"),
-            coverage90=("coverage90", "mean"),
-            runtime_s=("runtime_s", "sum"),
-            cells=("combined_rel", "size"),
+
+    rows = []
+    expected_cells = int(overall[["target", "horizon"]].drop_duplicates().shape[0])
+    for model, g in overall.groupby("model", dropna=False):
+        scored = g[g["combined_rel"].notna()].copy()
+        common = int(g["n_common"].sum())
+        baseline_origins = int(g["baseline_n"].sum())
+        rows.append(
+            {
+                "model": model,
+                "score": float(scored["combined_rel"].mean()) if len(scored) else np.nan,
+                "rmse_rel": float(scored["rmse_rel"].mean()) if len(scored) else np.nan,
+                "crps_rel": float(scored["crps_rel"].mean()) if len(scored) else np.nan,
+                "coverage80": float(scored["coverage80"].mean()) if len(scored) else np.nan,
+                "coverage90": float(scored["coverage90"].mean()) if len(scored) else np.nan,
+                "runtime_s": float(g["runtime_s"].sum()),
+                "cells": int(len(scored)),
+                "expected_cells": expected_cells,
+                "common_origins": common,
+                "baseline_origins": baseline_origins,
+                "failure_count": int(g["failure_count"].sum()),
+                "success_share_vs_baseline": (
+                    float(common / baseline_origins) if baseline_origins else np.nan
+                ),
+            }
         )
-        .sort_values(["score", "runtime_s"], ascending=[True, True])
-        .reset_index(drop=True)
-    )
+    board = pd.DataFrame(rows).sort_values(
+        ["score", "runtime_s"], ascending=[True, True], na_position="last"
+    ).reset_index(drop=True)
     board.insert(0, "rank", np.arange(1, len(board) + 1))
     board["beats_naive_last"] = board["score"] < 1.0
+    board["complete_cell_coverage"] = board["cells"] == board["expected_cells"]
     return board
 
 

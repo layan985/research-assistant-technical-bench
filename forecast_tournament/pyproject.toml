@@ -15,6 +15,7 @@ dependencies = [
   "statsmodels>=0.14",
   "PyYAML>=6.0",
   "requests>=2.31",
+  "tabulate>=0.9",
 ]
 
 [project.optional-dependencies]

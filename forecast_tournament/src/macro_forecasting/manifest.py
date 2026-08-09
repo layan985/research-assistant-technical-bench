@@ -36,7 +36,16 @@ def _git_sha() -> str | None:
 
 
 def _package_versions() -> dict[str, str | None]:
-    names = ["numpy", "pandas", "scipy", "scikit-learn", "statsmodels", "PyYAML", "requests"]
+    names = [
+        "numpy",
+        "pandas",
+        "scipy",
+        "scikit-learn",
+        "statsmodels",
+        "PyYAML",
+        "requests",
+        "tabulate",
+    ]
     out: dict[str, str | None] = {}
     for name in names:
         try:
@@ -51,7 +60,14 @@ def write_run_manifest(
     data_path: str | Path,
     output_dir: str | Path,
 ) -> dict:
-    """Freeze the exact code/config/data/software state behind one tournament run."""
+    """Freeze code/config/data/software state for one forecast/evaluation object.
+
+    ``git_sha`` identifies the evaluation code that generated the published tables.
+    ``forecast_source_sha`` identifies the code that generated the underlying forecast
+    ledger. They are identical for a normal end-to-end run; an evaluation-only audit
+    correction can explicitly preserve an earlier sealed forecast source via the
+    ``FORECAST_SOURCE_SHA`` environment variable.
+    """
     config_path = Path(config_path)
     data_path = Path(data_path)
     output = Path(output_dir)
@@ -66,12 +82,15 @@ def write_run_manifest(
         if path.is_file() and path.name != "run_manifest.json":
             result_hashes[path.name] = sha256_file(path)
 
+    evaluation_sha = _git_sha()
+    forecast_source_sha = os.environ.get("FORECAST_SOURCE_SHA") or evaluation_sha
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "benchmark_protocol_version": config.get("benchmark", {}).get("protocol_version"),
         "benchmark_name": config.get("benchmark", {}).get("name"),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "git_sha": _git_sha(),
+        "git_sha": evaluation_sha,
+        "forecast_source_sha": forecast_source_sha,
         "python_version": platform.python_version(),
         "platform": platform.platform(),
         "package_versions": _package_versions(),

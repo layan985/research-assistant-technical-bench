@@ -18,7 +18,14 @@ from .analysis import (
     revision_instability,
 )
 from .data import VintagePanel, transform_series
-from .evaluation import aggregate_metrics, build_leaderboard, crps_gaussian, dm_table, gaussian_quantile
+from .evaluation import (
+    aggregate_metrics,
+    build_leaderboard,
+    crps_gaussian,
+    dm_table,
+    gaussian_quantile,
+    paired_relative_cells,
+)
 from .features import build_supervised_origin
 from .models import default_model_registry
 
@@ -241,27 +248,29 @@ def finalize_forecasts(
             forecasts[column] = pd.to_datetime(forecasts[column])
 
     metrics = aggregate_metrics(forecasts) if not forecasts.empty else pd.DataFrame()
+    paired = paired_relative_cells(forecasts) if not forecasts.empty else pd.DataFrame()
     bench = config["benchmark"]
     truth_modes = list(bench.get("truth_modes", ["latest"]))
     primary_truth = bench.get("leaderboard_truth", truth_modes[0])
-    leaderboard = build_leaderboard(metrics, truth_mode=primary_truth) if not metrics.empty else pd.DataFrame()
+    leaderboard = build_leaderboard(paired, truth_mode=primary_truth) if not paired.empty else pd.DataFrame()
     dm = dm_table(forecasts) if not forecasts.empty else pd.DataFrame()
     complexity = (
-        complexity_failure_report(metrics, dm, truth_mode=primary_truth)
-        if not metrics.empty
+        complexity_failure_report(paired, dm, truth_mode=primary_truth)
+        if not paired.empty
         else pd.DataFrame()
     )
     revisions = (
-        revision_instability(metrics)
-        if not metrics.empty and {"first_release", "latest"}.issubset(set(truth_modes))
+        revision_instability(paired)
+        if not paired.empty and {"first_release", "latest"}.issubset(set(truth_modes))
         else pd.DataFrame()
     )
-    regimes = regime_comparison(metrics, truth_mode=primary_truth) if not metrics.empty else pd.DataFrame()
+    regimes = regime_comparison(paired, truth_mode=primary_truth) if not paired.empty else pd.DataFrame()
     pareto = pareto_frontier(leaderboard) if not leaderboard.empty else pd.DataFrame()
     audit = data_audit(panel.frame)
     return {
         "forecasts": forecasts,
         "metrics": metrics,
+        "relative_cells": paired,
         "leaderboard": leaderboard,
         "dm": dm,
         "complexity_report": complexity,

@@ -22,12 +22,13 @@ EXPECTED_DEFAULT_MODELS = [
 ]
 
 
-def test_protocol_v1_is_frozen_before_live_run():
+def test_protocol_v1_is_frozen_before_publication():
     config = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
     b = config["benchmark"]
-    assert b["protocol_version"] == "1.0.1"
+    assert b["protocol_version"] == "1.0.2"
     assert b["truth_modes"] == ["first_release", "latest"]
     assert b["leaderboard_truth"] == "first_release"
+    assert b["relative_scoring_sample"] == "paired_common_successful_origins_with_naive_last"
     assert b["horizons"] == [1, 3, 6, 12]
     assert b["enable_neural"] is False
     assert config["models"]["default"] == EXPECTED_DEFAULT_MODELS
