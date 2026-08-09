@@ -2,6 +2,10 @@
 
 This file is committed **before the first public live-data leaderboard**. Its purpose is to prevent the project from turning into post-hoc model promotion.
 
+## Protocol status
+
+The statistical analysis plan remains frozen. Before any model forecast or leaderboard was generated, live-data validation exposed one input-frequency defect in protocol v1.0.0: predictor `T10Y2Y` is a daily derived spread with ALFRED coverage beginning in 2014, while this is a monthly benchmark with a 2006 evaluation start. Protocol **v1.0.1** replaces that predictor with monthly `GS2`; monthly `GS10` was already included. Together those two Treasury yields preserve yield-curve information while providing a native monthly history extending well before the evaluation window. This is a pre-results data-input correction only: models, targets, horizons, truth definitions, score weights, inference, regimes, and decision rules below are unchanged. Failed pre-result live-run metadata remain in Issue #2.
+
 ## Primary research question
 
 **When does model complexity produce real-time macroeconomic forecast gains over a naive no-change benchmark, and when does it fail?**
