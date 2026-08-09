@@ -1,6 +1,6 @@
 import pandas as pd
 
-from macro_forecasting.data import VintagePanel, transform_series
+from macro_forecasting.data import FredVintageClient, VintagePanel, transform_series
 
 
 def test_snapshot_cannot_see_future_revision():
@@ -22,3 +22,61 @@ def test_yoy_transform_uses_only_past():
     y = transform_series(s, "yoy_pct")
     assert y.iloc[:12].isna().all()
     assert y.iloc[12] == (13 / 1 - 1) * 100
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+class _FakeSession:
+    def __init__(self, payload):
+        self.payload = payload
+        self.params = None
+
+    def get(self, url, params, timeout):
+        self.params = params
+        return _FakeResponse(self.payload)
+
+
+def test_initial_release_reconstructed_from_complete_realtime_history(tmp_path):
+    payload = {
+        "count": 3,
+        "observations": [
+            {
+                "date": "2020-01-01",
+                "value": "10.0",
+                "realtime_start": "2020-02-01",
+                "realtime_end": "2020-02-29",
+            },
+            {
+                "date": "2020-01-01",
+                "value": "11.0",
+                "realtime_start": "2020-03-01",
+                "realtime_end": "9999-12-31",
+            },
+            {
+                "date": "2020-02-01",
+                "value": "20.0",
+                "realtime_start": "2020-03-15",
+                "realtime_end": "9999-12-31",
+            },
+        ],
+    }
+    client = FredVintageClient("x" * 32, cache_dir=tmp_path)
+    fake = _FakeSession(payload)
+    client.session = fake
+
+    out = client._fetch_initial_release("X", "2020-01-01", "2020-12-31")
+
+    assert fake.params["output_type"] == 1
+    assert fake.params["realtime_start"] == "1776-07-04"
+    assert fake.params["realtime_end"] == "9999-12-31"
+    assert out["value"].tolist() == [10.0, 20.0]
+    assert out["vintage_date"].dt.strftime("%Y-%m-%d").tolist() == ["2020-02-01", "2020-03-15"]

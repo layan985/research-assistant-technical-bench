@@ -91,12 +91,16 @@ class VintagePanel:
 class FredVintageClient:
     """Minimal FRED/ALFRED client with cacheable exact-vintage snapshots.
 
-    The official FRED API requires an API key. Each request pins
+    The official FRED API requires an API key. Each historical snapshot request pins
     ``realtime_start == realtime_end == vintage_date`` so the downloaded values
-    represent the information set available on that historical date.
+    represent the information set available on that historical date. Initial releases
+    are reconstructed from FRED's documented complete real-time period by selecting
+    the earliest ``realtime_start`` for each observation.
     """
 
     BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
+    COMPLETE_REALTIME_START = "1776-07-04"
+    COMPLETE_REALTIME_END = "9999-12-31"
 
     def __init__(self, api_key: str, cache_dir: str | Path = ".cache/fred") -> None:
         if not api_key:
@@ -158,11 +162,19 @@ class FredVintageClient:
         cache = self.cache_dir / f"{series_id}_initial_release.csv"
         if cache.exists():
             return pd.read_csv(cache, parse_dates=["observation_date", "vintage_date"])
+
+        # FRED documents the complete real-time history as the closed interval
+        # 1776-07-04 through 9999-12-31. Using output_type=1 over that interval
+        # returns each value together with the period during which that revision was
+        # current. The earliest realtime_start for an observation is its first release.
         params = {
             "series_id": series_id,
             "api_key": self.api_key,
             "file_type": "json",
-            "output_type": 4,
+            "output_type": 1,
+            "realtime_start": self.COMPLETE_REALTIME_START,
+            "realtime_end": self.COMPLETE_REALTIME_END,
+            "limit": 100000,
         }
         if observation_start:
             params["observation_start"] = observation_start
@@ -170,19 +182,39 @@ class FredVintageClient:
             params["observation_end"] = observation_end
         response = self.session.get(self.BASE_URL, params=params, timeout=60)
         response.raise_for_status()
+        payload = response.json()
+        observations = payload.get("observations", [])
+        count = int(payload.get("count", len(observations)))
+        if count > len(observations):
+            raise RuntimeError(
+                f"FRED initial-release history for {series_id} was truncated: "
+                f"received {len(observations)} of {count} observations"
+            )
+
         rows = []
-        for obs in response.json().get("observations", []):
+        for obs in observations:
             value = obs.get("value")
             released = obs.get("realtime_start")
             if value in (None, ".") or not released:
                 continue
-            rows.append({
-                "series_id": series_id,
-                "observation_date": pd.Timestamp(obs["date"]),
-                "vintage_date": pd.Timestamp(released),
-                "value": float(value),
-            })
+            rows.append(
+                {
+                    "series_id": series_id,
+                    "observation_date": pd.Timestamp(obs["date"]),
+                    "vintage_date": pd.Timestamp(released),
+                    "value": float(value),
+                }
+            )
+
         out = pd.DataFrame(rows, columns=sorted(REQUIRED_COLUMNS))
+        if not out.empty:
+            out = (
+                out.sort_values(["observation_date", "vintage_date"])
+                .groupby("observation_date", as_index=False, sort=False)
+                .head(1)
+                .sort_values("observation_date")
+                .reset_index(drop=True)
+            )
         out.to_csv(cache, index=False)
         return out
 
