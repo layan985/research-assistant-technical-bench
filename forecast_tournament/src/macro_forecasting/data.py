@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import time
 from typing import Iterable
 
 import numpy as np
@@ -96,11 +97,18 @@ class FredVintageClient:
     represent the information set available on that historical date. Initial releases
     are reconstructed from FRED's documented complete real-time period by selecting
     the earliest ``realtime_start`` for each observation.
+
+    FRED rate-limits API traffic. Requests are deliberately paced below two requests
+    per second, and transient 429/5xx responses are retried with bounded backoff.
     """
 
     BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
     COMPLETE_REALTIME_START = "1776-07-04"
     COMPLETE_REALTIME_END = "9999-12-31"
+    MIN_REQUEST_INTERVAL_SECONDS = 0.60
+    MAX_RETRIES = 6
+    MAX_BACKOFF_SECONDS = 60.0
+    RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
     def __init__(self, api_key: str, cache_dir: str | Path = ".cache/fred") -> None:
         if not api_key:
@@ -109,6 +117,54 @@ class FredVintageClient:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session()
+        self._last_request_started: float | None = None
+
+    def _pace_request(self) -> None:
+        if self._last_request_started is None:
+            return
+        elapsed = time.monotonic() - self._last_request_started
+        remaining = self.MIN_REQUEST_INTERVAL_SECONDS - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
+
+    @staticmethod
+    def _retry_after_seconds(response: requests.Response) -> float | None:
+        raw = response.headers.get("Retry-After")
+        if not raw:
+            return None
+        try:
+            return max(0.0, float(raw))
+        except (TypeError, ValueError):
+            return None
+
+    def _request_json(self, params: dict[str, object]) -> dict:
+        """GET one FRED payload with deterministic pacing and bounded retries."""
+        for attempt in range(self.MAX_RETRIES + 1):
+            self._pace_request()
+            self._last_request_started = time.monotonic()
+            try:
+                response = self.session.get(self.BASE_URL, params=params, timeout=60)
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt >= self.MAX_RETRIES:
+                    raise
+                delay = min(self.MAX_BACKOFF_SECONDS, 2.0**attempt)
+                time.sleep(delay)
+                continue
+
+            if response.status_code in self.RETRYABLE_STATUS_CODES:
+                if attempt >= self.MAX_RETRIES:
+                    response.raise_for_status()
+                retry_after = self._retry_after_seconds(response)
+                delay = retry_after if retry_after is not None else min(
+                    self.MAX_BACKOFF_SECONDS, 2.0**attempt
+                )
+                time.sleep(delay)
+                continue
+
+            response.raise_for_status()
+            return response.json()
+
+        raise RuntimeError("unreachable FRED retry state")
 
     def _fetch_one(
         self,
@@ -133,9 +189,7 @@ class FredVintageClient:
             params["observation_start"] = observation_start
         if observation_end:
             params["observation_end"] = observation_end
-        response = self.session.get(self.BASE_URL, params=params, timeout=60)
-        response.raise_for_status()
-        payload = response.json()
+        payload = self._request_json(params)
         rows = []
         for obs in payload.get("observations", []):
             value = obs.get("value")
@@ -180,9 +234,7 @@ class FredVintageClient:
             params["observation_start"] = observation_start
         if observation_end:
             params["observation_end"] = observation_end
-        response = self.session.get(self.BASE_URL, params=params, timeout=60)
-        response.raise_for_status()
-        payload = response.json()
+        payload = self._request_json(params)
         observations = payload.get("observations", [])
         count = int(payload.get("count", len(observations)))
         if count > len(observations):
