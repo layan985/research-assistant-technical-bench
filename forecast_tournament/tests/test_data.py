@@ -54,9 +54,9 @@ class _FakeSession:
         return _FakeResponse(self.payload)
 
 
-def test_initial_release_reconstructed_from_complete_realtime_history(tmp_path):
-    payload = {
-        "count": 3,
+def _revision_payload():
+    return {
+        "count": 4,
         "observations": [
             {
                 "date": "2020-01-01",
@@ -76,11 +76,20 @@ def test_initial_release_reconstructed_from_complete_realtime_history(tmp_path):
                 "realtime_start": "2020-03-15",
                 "realtime_end": "9999-12-31",
             },
+            {
+                "date": "2020-03-01",
+                "value": ".",
+                "realtime_start": "2020-04-01",
+                "realtime_end": "9999-12-31",
+            },
         ],
     }
+
+
+def test_initial_release_reconstructed_from_complete_realtime_history(tmp_path):
     client = FredVintageClient("x" * 32, cache_dir=tmp_path)
     client.MIN_REQUEST_INTERVAL_SECONDS = 0
-    fake = _FakeSession(payload=payload)
+    fake = _FakeSession(payload=_revision_payload())
     client.session = fake
 
     out = client._fetch_initial_release("X", "2020-01-01", "2020-12-31")
@@ -90,6 +99,53 @@ def test_initial_release_reconstructed_from_complete_realtime_history(tmp_path):
     assert fake.params["realtime_end"] == "9999-12-31"
     assert out["value"].tolist() == [10.0, 20.0]
     assert out["vintage_date"].dt.strftime("%Y-%m-%d").tolist() == ["2020-02-01", "2020-03-15"]
+
+
+def test_download_panel_uses_one_history_request_and_reconstructs_vintages(tmp_path):
+    client = FredVintageClient("x" * 32, cache_dir=tmp_path)
+    client.MIN_REQUEST_INTERVAL_SECONDS = 0
+    fake = _FakeSession(payload=_revision_payload())
+    client.session = fake
+
+    panel = client.download_panel(
+        ["X"],
+        [pd.Timestamp("2020-02-15"), pd.Timestamp("2020-03-31")],
+        observation_start="2020-01-01",
+        observation_end="2020-12-31",
+    )
+
+    assert fake.calls == 1
+    feb = panel.snapshot("2020-02-15")
+    mar = panel.snapshot("2020-03-31")
+    assert feb.loc[pd.Timestamp("2020-01-01"), "X"] == 10.0
+    assert mar.loc[pd.Timestamp("2020-01-01"), "X"] == 11.0
+    assert mar.loc[pd.Timestamp("2020-02-01"), "X"] == 20.0
+    assert panel.truth("X", "first_release").loc[pd.Timestamp("2020-01-01")] == 10.0
+    assert panel.truth("X", "latest").loc[pd.Timestamp("2020-01-01")] == 11.0
+
+
+def test_missing_active_revision_does_not_resurrect_old_value(tmp_path):
+    history = pd.DataFrame(
+        [
+            {
+                "series_id": "X",
+                "observation_date": pd.Timestamp("2020-01-01"),
+                "realtime_start": "2020-02-01",
+                "realtime_end": "2020-02-29",
+                "value": 10.0,
+            },
+            {
+                "series_id": "X",
+                "observation_date": pd.Timestamp("2020-01-01"),
+                "realtime_start": "2020-03-01",
+                "realtime_end": "9999-12-31",
+                "value": float("nan"),
+            },
+        ]
+    )
+    client = FredVintageClient("x" * 32, cache_dir=tmp_path)
+    snapshot = client._snapshot_from_history(history, pd.Timestamp("2020-03-31"))
+    assert snapshot.empty
 
 
 def test_request_json_retries_429_and_respects_retry_after(tmp_path, monkeypatch):
