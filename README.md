@@ -17,6 +17,10 @@ This is not a tutorial repository. It is a **timed execution bench**: messy data
 
 **Target:** 90 minutes each. **Pass:** 75/100. **Predoc-ready:** 85+/100 on every task with no critical reproducibility failures.
 
+## Companion research benchmark
+
+The repository now also contains [`forecast_tournament/`](forecast_tournament/): a separate real-time macroeconomic forecasting tournament with 14 default models, ALFRED/FRED vintage information sets, first-release vs revised truth, probabilistic scoring, Diebold–Mariano comparisons, regime slices, and a generated public leaderboard. It is a research object, not one of the timed exams.
+
 ## What makes this a bench rather than six toy projects
 
 - deterministic challenge generation;
@@ -84,6 +88,7 @@ grading/      machine checks and rubric logic
 reference/    reference outputs/implementations; do not open during an attempt
 scripts/      timer, submitter, bootstrap, scoreboard builder
 scoreboard/   public score templates
+forecast_tournament/  real-time macro forecasting research benchmark
 .github/      benchmark CI and issue template
 ```
 

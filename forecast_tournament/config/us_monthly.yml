@@ -1,0 +1,60 @@
+benchmark:
+  protocol_version: "1.0.0"
+  name: us_monthly_real_time
+  frequency: MS
+  vintage_start: "2006-01-31"
+  vintage_end: "2026-07-31"
+  min_train: 72
+  step_months: 1
+  lags: 12
+  max_staleness: 3
+  truth_modes: [first_release, latest]
+  leaderboard_truth: first_release
+  horizons: [1, 3, 6, 12]
+  quantiles: [0.05, 0.25, 0.50, 0.75, 0.95]
+  seed: 1729
+  enable_neural: false
+  neural_min_observations: 180
+
+series:
+  targets:
+    CPIAUCSL:
+      label: CPI inflation YoY
+      transform: yoy_pct
+    UNRATE:
+      label: Unemployment rate
+      transform: level
+    INDPRO:
+      label: Industrial production YoY
+      transform: yoy_pct
+  predictors:
+    - PAYEMS
+    - FEDFUNDS
+    - GS10
+    - T10Y2Y
+    - PCEPI
+    - PPIACO
+    - HOUST
+    - RSAFS
+    - M2SL
+    - UMCSENT
+  recession_indicator: USREC
+
+models:
+  default:
+    - mean
+    - naive_last
+    - naive_drift
+    - seasonal_naive
+    - autoreg
+    - arima
+    - var
+    - bvar_niw
+    - dynamic_factor
+    - state_space
+    - ridge
+    - elastic_net
+    - random_forest
+    - hist_gradient_boosting
+  optional:
+    - mlp
