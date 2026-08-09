@@ -10,6 +10,13 @@ import pandas as pd
 import requests
 
 REQUIRED_COLUMNS = {"series_id", "observation_date", "vintage_date", "value"}
+HISTORY_COLUMNS = {
+    "series_id",
+    "observation_date",
+    "realtime_start",
+    "realtime_end",
+    "value",
+}
 
 
 def transform_series(series: pd.Series, kind: str) -> pd.Series:
@@ -90,16 +97,17 @@ class VintagePanel:
 
 
 class FredVintageClient:
-    """Minimal FRED/ALFRED client with cacheable exact-vintage snapshots.
+    """FRED/ALFRED client that reconstructs exact historical snapshots locally.
 
-    The official FRED API requires an API key. Each historical snapshot request pins
-    ``realtime_start == realtime_end == vintage_date`` so the downloaded values
-    represent the information set available on that historical date. Initial releases
-    are reconstructed from FRED's documented complete real-time period by selecting
-    the earliest ``realtime_start`` for each observation.
+    FRED's output type 1 exposes every observation revision together with the closed
+    real-time interval for which that revision was current. The client downloads that
+    complete revision history once per series, then reconstructs every requested
+    month-end vintage locally by applying the interval boundaries. This is equivalent
+    to asking FRED for each pinned vintage separately, but avoids thousands of API
+    calls and preserves the exact historical information set.
 
-    FRED rate-limits API traffic. Requests are deliberately paced below two requests
-    per second, and transient 429/5xx responses are retried with bounded backoff.
+    Network requests are also paced below FRED's documented two-requests-per-second
+    limit and retry transient 429/5xx failures with bounded backoff.
     """
 
     BASE_URL = "https://api.stlouisfed.org/fred/series/observations"
@@ -166,61 +174,17 @@ class FredVintageClient:
 
         raise RuntimeError("unreachable FRED retry state")
 
-    def _fetch_one(
-        self,
-        series_id: str,
-        vintage: pd.Timestamp,
-        observation_start: str | None,
-        observation_end: str | None,
-    ) -> pd.DataFrame:
-        vintage = pd.Timestamp(vintage).normalize()
-        cache = self.cache_dir / f"{series_id}_{vintage.date().isoformat()}.csv"
-        if cache.exists():
-            return pd.read_csv(cache, parse_dates=["observation_date", "vintage_date"])
-
-        params = {
-            "series_id": series_id,
-            "api_key": self.api_key,
-            "file_type": "json",
-            "realtime_start": vintage.date().isoformat(),
-            "realtime_end": vintage.date().isoformat(),
-        }
-        if observation_start:
-            params["observation_start"] = observation_start
-        if observation_end:
-            params["observation_end"] = observation_end
-        payload = self._request_json(params)
-        rows = []
-        for obs in payload.get("observations", []):
-            value = obs.get("value")
-            if value in (None, "."):
-                continue
-            rows.append(
-                {
-                    "series_id": series_id,
-                    "observation_date": pd.Timestamp(obs["date"]),
-                    "vintage_date": vintage,
-                    "value": float(value),
-                }
-            )
-        out = pd.DataFrame(rows, columns=sorted(REQUIRED_COLUMNS))
-        out.to_csv(cache, index=False)
-        return out
-
-    def _fetch_initial_release(
+    def _fetch_realtime_history(
         self,
         series_id: str,
         observation_start: str | None,
         observation_end: str | None,
     ) -> pd.DataFrame:
-        cache = self.cache_dir / f"{series_id}_initial_release.csv"
+        """Download all revisions and their validity intervals for one series."""
+        cache = self.cache_dir / f"{series_id}_realtime_history.csv"
         if cache.exists():
-            return pd.read_csv(cache, parse_dates=["observation_date", "vintage_date"])
+            return pd.read_csv(cache, dtype={"realtime_start": str, "realtime_end": str})
 
-        # FRED documents the complete real-time history as the closed interval
-        # 1776-07-04 through 9999-12-31. Using output_type=1 over that interval
-        # returns each value together with the period during which that revision was
-        # current. The earliest realtime_start for an observation is its first release.
         params = {
             "series_id": series_id,
             "api_key": self.api_key,
@@ -234,41 +198,103 @@ class FredVintageClient:
             params["observation_start"] = observation_start
         if observation_end:
             params["observation_end"] = observation_end
+
         payload = self._request_json(params)
         observations = payload.get("observations", [])
         count = int(payload.get("count", len(observations)))
         if count > len(observations):
             raise RuntimeError(
-                f"FRED initial-release history for {series_id} was truncated: "
+                f"FRED real-time history for {series_id} was truncated: "
                 f"received {len(observations)} of {count} observations"
             )
 
         rows = []
         for obs in observations:
-            value = obs.get("value")
             released = obs.get("realtime_start")
-            if value in (None, ".") or not released:
+            if not released:
                 continue
+            realtime_end = obs.get("realtime_end")
+            if realtime_end in (None, "", "."):
+                realtime_end = self.COMPLETE_REALTIME_END
+            raw_value = obs.get("value")
+            value = np.nan if raw_value in (None, ".") else float(raw_value)
             rows.append(
                 {
                     "series_id": series_id,
                     "observation_date": pd.Timestamp(obs["date"]),
-                    "vintage_date": pd.Timestamp(released),
-                    "value": float(value),
+                    "realtime_start": str(released),
+                    "realtime_end": str(realtime_end),
+                    "value": value,
                 }
             )
 
-        out = pd.DataFrame(rows, columns=sorted(REQUIRED_COLUMNS))
-        if not out.empty:
-            out = (
-                out.sort_values(["observation_date", "vintage_date"])
-                .groupby("observation_date", as_index=False, sort=False)
-                .head(1)
-                .sort_values("observation_date")
-                .reset_index(drop=True)
-            )
-        out.to_csv(cache, index=False)
-        return out
+        history = pd.DataFrame(rows, columns=sorted(HISTORY_COLUMNS))
+        if not history.empty:
+            history = history.sort_values(
+                ["observation_date", "realtime_start", "realtime_end"]
+            ).reset_index(drop=True)
+        history.to_csv(cache, index=False)
+        return history
+
+    def _initial_release_from_history(self, history: pd.DataFrame) -> pd.DataFrame:
+        valid = history.dropna(subset=["value"]).copy()
+        if valid.empty:
+            return pd.DataFrame(columns=sorted(REQUIRED_COLUMNS))
+        first = (
+            valid.sort_values(["observation_date", "realtime_start"])
+            .groupby("observation_date", as_index=False, sort=False)
+            .head(1)
+            .copy()
+        )
+        first["vintage_date"] = pd.to_datetime(first["realtime_start"])
+        return first[["series_id", "observation_date", "vintage_date", "value"]]
+
+    def _snapshot_from_history(
+        self, history: pd.DataFrame, vintage: pd.Timestamp
+    ) -> pd.DataFrame:
+        vintage = pd.Timestamp(vintage).normalize()
+        vintage_text = vintage.date().isoformat()
+        if history.empty:
+            return pd.DataFrame(columns=sorted(REQUIRED_COLUMNS))
+
+        # FRED real-time periods are closed intervals: a revision is current on a
+        # vintage date exactly when realtime_start <= vintage <= realtime_end.
+        active = history[
+            (history["realtime_start"] <= vintage_text)
+            & (history["realtime_end"] >= vintage_text)
+        ].copy()
+        if active.empty:
+            return pd.DataFrame(columns=sorted(REQUIRED_COLUMNS))
+
+        active = (
+            active.sort_values(["observation_date", "realtime_start"])
+            .groupby("observation_date", as_index=False, sort=False)
+            .tail(1)
+        )
+        # A missing active value is a genuine absence at that vintage. It must not
+        # resurrect the previous revision whose real-time interval has already ended.
+        active = active.dropna(subset=["value"]).copy()
+        active["vintage_date"] = vintage
+        return active[["series_id", "observation_date", "vintage_date", "value"]]
+
+    def _fetch_one(
+        self,
+        series_id: str,
+        vintage: pd.Timestamp,
+        observation_start: str | None,
+        observation_end: str | None,
+    ) -> pd.DataFrame:
+        history = self._fetch_realtime_history(series_id, observation_start, observation_end)
+        return self._snapshot_from_history(history, vintage)
+
+    def _fetch_initial_release(
+        self,
+        series_id: str,
+        observation_start: str | None,
+        observation_end: str | None,
+    ) -> pd.DataFrame:
+        history = self._fetch_realtime_history(series_id, observation_start, observation_end)
+        return self._initial_release_from_history(history)
 
     def download_panel(
         self,
@@ -279,13 +305,14 @@ class FredVintageClient:
         include_initial_release: bool = True,
     ) -> VintagePanel:
         pieces: list[pd.DataFrame] = []
+        normalized_vintages = [pd.Timestamp(v).normalize() for v in vintages]
         for series_id in series_ids:
+            history = self._fetch_realtime_history(series_id, observation_start, observation_end)
             if include_initial_release:
-                pieces.append(self._fetch_initial_release(series_id, observation_start, observation_end))
-            for vintage in vintages:
-                pieces.append(
-                    self._fetch_one(series_id, pd.Timestamp(vintage), observation_start, observation_end)
-                )
+                pieces.append(self._initial_release_from_history(history))
+            pieces.extend(
+                self._snapshot_from_history(history, vintage) for vintage in normalized_vintages
+            )
         if not pieces:
             return VintagePanel(pd.DataFrame(columns=sorted(REQUIRED_COLUMNS)))
         return VintagePanel(pd.concat(pieces, ignore_index=True).drop_duplicates())
