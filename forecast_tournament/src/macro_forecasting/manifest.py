@@ -10,6 +10,8 @@ import platform
 import shutil
 import subprocess
 
+import yaml
+
 
 def sha256_file(path: str | Path, chunk_size: int = 1024 * 1024) -> str:
     h = sha256()
@@ -55,6 +57,7 @@ def write_run_manifest(
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     frozen_config = output / "config_frozen.yml"
     shutil.copyfile(config_path, frozen_config)
 
@@ -65,6 +68,8 @@ def write_run_manifest(
 
     manifest = {
         "schema_version": 1,
+        "benchmark_protocol_version": config.get("benchmark", {}).get("protocol_version"),
+        "benchmark_name": config.get("benchmark", {}).get("name"),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "git_sha": _git_sha(),
         "python_version": platform.python_version(),

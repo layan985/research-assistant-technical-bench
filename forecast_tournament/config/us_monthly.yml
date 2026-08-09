@@ -1,4 +1,5 @@
 benchmark:
+  protocol_version: "1.0.0"
   name: us_monthly_real_time
   frequency: MS
   vintage_start: "2006-01-31"

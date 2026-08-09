@@ -4,6 +4,8 @@ A deliberately hostile macroeconomic forecasting benchmark. The question is not 
 
 > **Across real-time information sets, horizons, regimes and targets, when does complexity earn its cost — and when does a naive forecast beat it?**
 
+The first public live run is governed by **benchmark protocol v1.0.0**. CI locks the primary truth definition, horizons, default model field, naive denominator and neural-off default before any live rankings are observed.
+
 ## What is actually benchmarked
 
 The default tournament contains **14 models** plus one neural model that is disabled unless explicitly justified:
@@ -24,7 +26,7 @@ The default tournament contains **14 models** plus one neural model that is disa
 14. histogram gradient boosting
 15. optional MLP benchmark (`enable_neural: true`, minimum sample gate)
 
-The naive models are not decorative. `naive_last` is the leaderboard denominator. A model with a combined relative score above 1.0 loses to the naive benchmark.
+The naive models are not decorative. `naive_last` is the leaderboard denominator. A model with a combined relative score above 1.0 loses to the naive benchmark. See `MODEL_CARDS.md` for each family’s role and failure mode.
 
 ## Real-time anti-leakage design
 
@@ -67,7 +69,7 @@ Targets:
 
 Predictors include payrolls, policy and Treasury rates, the yield-curve slope, PCE/PPI prices, housing starts, retail sales, M2 and consumer sentiment. The recession slice uses `USREC`.
 
-Configuration lives in `config/us_monthly.yml` and is intentionally editable so another track (ECB, UK, MENA, etc.) can use the same tournament engine.
+Configuration lives in `config/us_monthly.yml` and is intentionally editable only through an explicit protocol-version change once live evaluation begins.
 
 ## Run
 
@@ -83,9 +85,7 @@ macro-tournament run --config config/us_monthly.yml --data data/vintages.csv --o
 
 The FRED/ALFRED API key is required only for the live vintage download. Unit tests use synthetic/frozen inputs and require no network access.
 
-## Why ALFRED/FRED vintages
-
-The live downloader pins `realtime_start` and `realtime_end` to the historical vintage date for every request. That makes the information set auditable and prevents later revisions from silently entering an earlier forecast origin.
+Every run emits `run_manifest.json` and `config_frozen.yml`, recording the benchmark protocol version, git SHA, config hash, vintage-data hash, software versions, and SHA-256 hashes of generated outputs.
 
 ## Public leaderboard contract
 
@@ -96,6 +96,10 @@ The ranking score is:
 `0.60 × relative RMSE + 0.40 × relative CRPS`
 
 where both relatives are measured against `naive_last` within each target × horizon cell before averaging across cells. Lower is better; `< 1` beats the naive-last benchmark.
+
+## Predeclared analysis
+
+`ANALYSIS_PLAN.md` freezes the questions asked before the first live leaderboard. In addition to the headline ranking, the run reports complexity failure rates, Holm-adjusted DM wins/losses, first-release vs revised ranking instability, regime differences, calibration diagnostics, and the score/runtime Pareto frontier.
 
 ## Interpretation standard
 
