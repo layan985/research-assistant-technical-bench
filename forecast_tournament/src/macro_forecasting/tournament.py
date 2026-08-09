@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import numpy as np
 import pandas as pd
@@ -32,7 +32,11 @@ def _truth_series(panel: VintagePanel, target: str, transform: str, mode: str) -
     raw = panel.truth(target, mode=mode)
     if raw.empty:
         return raw
-    idx = pd.date_range(raw.index.min().to_period("M").to_timestamp(), raw.index.max().to_period("M").to_timestamp(), freq="MS")
+    idx = pd.date_range(
+        raw.index.min().to_period("M").to_timestamp(),
+        raw.index.max().to_period("M").to_timestamp(),
+        freq="MS",
+    )
     raw = raw.reindex(idx)
     return transform_series(raw, transform)
 
@@ -70,7 +74,24 @@ def _prequential_sigma(
     return max(0.35 * base_sigma + 0.65 * empirical, 1e-8)
 
 
-def run_tournament(panel: VintagePanel, config: dict[str, Any]) -> dict[str, pd.DataFrame]:
+def _normalize_filter(values: Iterable[Any] | None) -> set[Any] | None:
+    return None if values is None else set(values)
+
+
+def run_forecasts(
+    panel: VintagePanel,
+    config: dict[str, Any],
+    target_filter: Iterable[str] | None = None,
+    horizon_filter: Iterable[int] | None = None,
+) -> pd.DataFrame:
+    """Generate the chronological forecast ledger for all or selected cells.
+
+    A target × horizon cell is self-contained: its model fits and prequential
+    calibration state depend only on earlier origins in that same cell. Therefore
+    cells may be executed on isolated workers and concatenated without changing any
+    forecasts, errors, or calibration decisions. Origin order within each cell remains
+    strictly serial.
+    """
     bench = config["benchmark"]
     series_cfg = config["series"]
     registry = default_model_registry()
@@ -78,7 +99,23 @@ def run_tournament(panel: VintagePanel, config: dict[str, Any]) -> dict[str, pd.
     if bench.get("enable_neural", False):
         model_names += list(config["models"].get("optional", []))
 
-    target_cfg = series_cfg["targets"]
+    selected_targets = _normalize_filter(target_filter)
+    selected_horizons = _normalize_filter(int(h) for h in horizon_filter) if horizon_filter is not None else None
+    target_cfg = {
+        target: spec
+        for target, spec in series_cfg["targets"].items()
+        if selected_targets is None or target in selected_targets
+    }
+    horizons = [
+        int(h)
+        for h in bench["horizons"]
+        if selected_horizons is None or int(h) in selected_horizons
+    ]
+    if not target_cfg:
+        raise ValueError("target filter selected no configured targets")
+    if not horizons:
+        raise ValueError("horizon filter selected no configured horizons")
+
     predictors = list(series_cfg.get("predictors", []))
     regime = _regime_map(panel, series_cfg.get("recession_indicator"))
     truth_modes = list(bench.get("truth_modes", ["latest"]))
@@ -118,7 +155,7 @@ def run_tournament(panel: VintagePanel, config: dict[str, Any]) -> dict[str, pd.
                 continue
             seen_origin.add(origin_key)
 
-            for horizon in bench["horizons"]:
+            for horizon in horizons:
                 ctx = build_supervised_origin(
                     snapshot=snapshot,
                     target_id=target,
@@ -132,7 +169,9 @@ def run_tournament(panel: VintagePanel, config: dict[str, Any]) -> dict[str, pd.
                 if ctx is None:
                     continue
                 for model_name in model_names:
-                    if model_name == "mlp" and len(ctx.X_train) < int(bench.get("neural_min_observations", 180)):
+                    if model_name == "mlp" and len(ctx.X_train) < int(
+                        bench.get("neural_min_observations", 180)
+                    ):
                         continue
                     result = registry[model_name](ctx, int(horizon), int(bench.get("seed", 1729)))
                     for truth_mode in truth_modes:
@@ -155,8 +194,12 @@ def run_tournament(panel: VintagePanel, config: dict[str, Any]) -> dict[str, pd.
                             pit = float(norm.cdf((float(actual) - result.mean) / max(sigma, 1e-12)))
                         else:
                             q10 = q90 = q05 = q95 = crps = pit = np.nan
-                        target_regime = regime.get(ctx.target_date, "unknown") if not regime.empty else "unknown"
-                        vol_regime = volatility_maps.get(target, pd.Series(dtype=object)).get(ctx.target_date, "unknown")
+                        target_regime = (
+                            regime.get(ctx.target_date, "unknown") if not regime.empty else "unknown"
+                        )
+                        vol_regime = volatility_maps.get(target, pd.Series(dtype=object)).get(
+                            ctx.target_date, "unknown"
+                        )
                         common = {
                             "vintage_date": pd.Timestamp(vintage),
                             "origin_date": ctx.origin_date,
@@ -185,13 +228,34 @@ def run_tournament(panel: VintagePanel, config: dict[str, Any]) -> dict[str, pd.
                             extra["regime"] = extra_regime
                             rows.append(extra)
 
-    forecasts = pd.DataFrame(rows)
+    return pd.DataFrame(rows)
+
+
+def finalize_forecasts(
+    forecasts: pd.DataFrame, panel: VintagePanel, config: dict[str, Any]
+) -> dict[str, pd.DataFrame]:
+    """Build every public evaluation table from a completed forecast ledger."""
+    forecasts = forecasts.copy()
+    for column in ("vintage_date", "origin_date", "target_date"):
+        if column in forecasts:
+            forecasts[column] = pd.to_datetime(forecasts[column])
+
     metrics = aggregate_metrics(forecasts) if not forecasts.empty else pd.DataFrame()
+    bench = config["benchmark"]
+    truth_modes = list(bench.get("truth_modes", ["latest"]))
     primary_truth = bench.get("leaderboard_truth", truth_modes[0])
     leaderboard = build_leaderboard(metrics, truth_mode=primary_truth) if not metrics.empty else pd.DataFrame()
     dm = dm_table(forecasts) if not forecasts.empty else pd.DataFrame()
-    complexity = complexity_failure_report(metrics, dm, truth_mode=primary_truth) if not metrics.empty else pd.DataFrame()
-    revisions = revision_instability(metrics) if not metrics.empty and {"first_release", "latest"}.issubset(set(truth_modes)) else pd.DataFrame()
+    complexity = (
+        complexity_failure_report(metrics, dm, truth_mode=primary_truth)
+        if not metrics.empty
+        else pd.DataFrame()
+    )
+    revisions = (
+        revision_instability(metrics)
+        if not metrics.empty and {"first_release", "latest"}.issubset(set(truth_modes))
+        else pd.DataFrame()
+    )
     regimes = regime_comparison(metrics, truth_mode=primary_truth) if not metrics.empty else pd.DataFrame()
     pareto = pareto_frontier(leaderboard) if not leaderboard.empty else pd.DataFrame()
     audit = data_audit(panel.frame)
@@ -208,11 +272,30 @@ def run_tournament(panel: VintagePanel, config: dict[str, Any]) -> dict[str, pd.
     }
 
 
+def run_tournament(
+    panel: VintagePanel,
+    config: dict[str, Any],
+    target_filter: Iterable[str] | None = None,
+    horizon_filter: Iterable[int] | None = None,
+) -> dict[str, pd.DataFrame]:
+    forecasts = run_forecasts(
+        panel,
+        config,
+        target_filter=target_filter,
+        horizon_filter=horizon_filter,
+    )
+    return finalize_forecasts(forecasts, panel, config)
+
+
 def write_results(results: dict[str, pd.DataFrame], output_dir: str | Path) -> None:
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     for name, frame in results.items():
         frame.to_csv(output / f"{name}.csv", index=False)
     if not results["leaderboard"].empty:
-        (output / "leaderboard.md").write_text(results["leaderboard"].to_markdown(index=False), encoding="utf-8")
-    (output / "research_summary.md").write_text(research_summary(results), encoding="utf-8")
+        (output / "leaderboard.md").write_text(
+            results["leaderboard"].to_markdown(index=False), encoding="utf-8"
+        )
+    (output / "research_summary.md").write_text(
+        research_summary(results), encoding="utf-8"
+    )
