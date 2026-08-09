@@ -25,10 +25,14 @@ def test_yoy_transform_uses_only_past():
 
 
 class _FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload, status_code=200, headers=None):
         self._payload = payload
+        self.status_code = status_code
+        self.headers = headers or {}
 
     def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
         return None
 
     def json(self):
@@ -36,12 +40,17 @@ class _FakeResponse:
 
 
 class _FakeSession:
-    def __init__(self, payload):
+    def __init__(self, payload=None, responses=None):
         self.payload = payload
+        self.responses = list(responses or [])
         self.params = None
+        self.calls = 0
 
     def get(self, url, params, timeout):
         self.params = params
+        self.calls += 1
+        if self.responses:
+            return self.responses.pop(0)
         return _FakeResponse(self.payload)
 
 
@@ -70,7 +79,8 @@ def test_initial_release_reconstructed_from_complete_realtime_history(tmp_path):
         ],
     }
     client = FredVintageClient("x" * 32, cache_dir=tmp_path)
-    fake = _FakeSession(payload)
+    client.MIN_REQUEST_INTERVAL_SECONDS = 0
+    fake = _FakeSession(payload=payload)
     client.session = fake
 
     out = client._fetch_initial_release("X", "2020-01-01", "2020-12-31")
@@ -80,3 +90,23 @@ def test_initial_release_reconstructed_from_complete_realtime_history(tmp_path):
     assert fake.params["realtime_end"] == "9999-12-31"
     assert out["value"].tolist() == [10.0, 20.0]
     assert out["vintage_date"].dt.strftime("%Y-%m-%d").tolist() == ["2020-02-01", "2020-03-15"]
+
+
+def test_request_json_retries_429_and_respects_retry_after(tmp_path, monkeypatch):
+    sleeps = []
+    monkeypatch.setattr("macro_forecasting.data.time.sleep", lambda seconds: sleeps.append(seconds))
+
+    client = FredVintageClient("x" * 32, cache_dir=tmp_path)
+    client.MIN_REQUEST_INTERVAL_SECONDS = 0
+    client.session = _FakeSession(
+        responses=[
+            _FakeResponse({}, status_code=429, headers={"Retry-After": "0.25"}),
+            _FakeResponse({"observations": []}, status_code=200),
+        ]
+    )
+
+    payload = client._request_json({"series_id": "X"})
+
+    assert payload == {"observations": []}
+    assert client.session.calls == 2
+    assert sleeps == [0.25]
