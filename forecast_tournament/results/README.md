@@ -14,6 +14,8 @@ A live run writes:
 - `pareto_frontier.csv` — score/runtime frontier and dominated models
 - `data_audit.csv` — coverage and duplicate diagnostics for the frozen vintage database
 - `research_summary.md` — mechanically generated interpretation memo
+- `config_frozen.yml` — exact configuration copied into the run artifact
+- `run_manifest.json` — git SHA, config/data hashes, software versions, platform, and SHA-256 hashes of every generated result
 
 The headline leaderboard uses **first-release truth**. The same run also evaluates against latest-revised truth so revision sensitivity is visible.
 

@@ -62,4 +62,6 @@ jobs:
           path: |
             forecast_tournament/results/*.csv
             forecast_tournament/results/*.md
+            forecast_tournament/results/*.json
+            forecast_tournament/results/*.yml
           if-no-files-found: error

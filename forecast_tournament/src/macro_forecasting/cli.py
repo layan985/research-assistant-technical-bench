@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from .data import FredVintageClient, VintagePanel, month_end_vintages
+from .manifest import write_run_manifest
 from .tournament import load_config, run_tournament, write_results
 
 
@@ -37,8 +38,12 @@ def cmd_run(args: argparse.Namespace) -> None:
     panel = VintagePanel.from_csv(args.data)
     results = run_tournament(panel, config)
     write_results(results, args.output_dir)
+    manifest = write_run_manifest(args.config, args.data, args.output_dir)
     board = results["leaderboard"]
     print(board.to_string(index=False) if not board.empty else "No evaluable forecasts produced.")
+    print(f"run manifest: {Path(args.output_dir) / 'run_manifest.json'}")
+    print(f"config sha256: {manifest['config']['sha256']}")
+    print(f"vintage database sha256: {manifest['vintage_database']['sha256']}")
 
 
 def main() -> None:
