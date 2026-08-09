@@ -1,5 +1,8 @@
 # Research Assistant Technical Bench
 
+> **Portfolio case study:** [Contribution, public proof, claim boundaries and the next external-validation gate](docs/PORTFOLIO_CASE_STUDY.md).
+
+
 A six-exam, 90-minute-per-task technical training repository for economics predoc and research-assistant assessments.
 
 This is not a tutorial repository. It is a **timed execution bench**: messy data, large data, causal inference, scraping, text-as-data, and code debugging. Every task has explicit deliverables, machine-checkable outputs, a rubric, and an attempt log.
