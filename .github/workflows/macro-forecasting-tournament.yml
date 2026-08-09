@@ -45,6 +45,7 @@ jobs:
     env:
       FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
     steps:
+      - uses: actions/checkout@v4
       - name: Check live-run credential
         id: live_gate
         shell: bash
@@ -56,8 +57,6 @@ jobs:
             echo "enabled=true" >> "$GITHUB_OUTPUT"
             echo "FRED_API_KEY is configured; executing frozen protocol v1.0.0."
           fi
-      - uses: actions/checkout@v4
-        if: steps.live_gate.outputs.enabled == 'true'
       - uses: actions/setup-python@v5
         if: steps.live_gate.outputs.enabled == 'true'
         with:
