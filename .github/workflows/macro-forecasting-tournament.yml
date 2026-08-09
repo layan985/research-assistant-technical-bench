@@ -1,13 +1,8 @@
 name: macro-forecasting-tournament
 
-# Execution architecture only: protocol v1.0.1 statistical rules remain unchanged.
+# Live forecasts require explicit manual dispatch after the first sealed run.
 on:
   pull_request:
-    paths:
-      - "forecast_tournament/**"
-      - ".github/workflows/macro-forecasting-tournament.yml"
-  push:
-    branches: [main]
     paths:
       - "forecast_tournament/**"
       - ".github/workflows/macro-forecasting-tournament.yml"
@@ -36,7 +31,7 @@ jobs:
       - run: pytest
 
   prepare-data:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.live_run) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.live_run }}
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -55,10 +50,10 @@ jobs:
         run: |
           if [ -z "$FRED_API_KEY" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Live tournament skipped::Repository secret FRED_API_KEY is not configured. Protocol v1.0.1 remains frozen; no empirical rankings were generated."
+            echo "::notice title=Live tournament skipped::Repository secret FRED_API_KEY is not configured; no empirical rankings were generated."
           else
             echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "FRED_API_KEY is configured; executing frozen protocol v1.0.1."
+            echo "FRED_API_KEY is configured; executing the explicitly dispatched frozen protocol."
           fi
       - uses: actions/setup-python@v5
         if: steps.live_gate.outputs.enabled == 'true'
