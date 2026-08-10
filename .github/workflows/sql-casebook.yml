@@ -1,0 +1,24 @@
+name: sql-casebook
+
+on:
+  push:
+    paths:
+      - "work_samples/sql-analytics-casebook/**"
+      - ".github/workflows/sql-casebook.yml"
+  pull_request:
+    paths:
+      - "work_samples/sql-analytics-casebook/**"
+      - ".github/workflows/sql-casebook.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: work_samples/sql-analytics-casebook
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python validate_casebook.py
