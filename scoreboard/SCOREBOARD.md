@@ -11,7 +11,7 @@ Publish human scores only after completing genuine timed attempts.
 | 05 Text as data | — | — | — | — |
 | 06 Bug hunt | — | — | — | — |
 
-**Predoc-ready gate:** >=85 on all six, no critical fail, at least four completed within 90 minutes.
+**Personal target:** at least 85 on all six, no critical fail, and at least four completed within 90 minutes.
 
 ## Automated system validation
 

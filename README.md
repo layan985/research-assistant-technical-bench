@@ -1,115 +1,57 @@
 # Research Assistant Technical Bench
 
-> **Research portfolio:** [layanaloreidi.online](https://layanaloreidi.online)
+Reading a finished notebook does not show whether I can enter an unfamiliar dataset, find the traps, and finish under time pressure. I built these six tasks to test that narrower question.
 
-> **Portfolio case study:** [Contribution, public proof, claim boundaries and the next external-validation gate](docs/PORTFOLIO_CASE_STUDY.md).
+## Current status
 
+As of 10 August 2026, I have completed **0 of 6 human timed attempts**. The task generators and graders for Tasks 01 and 02 have passed automated smoke tests, but those runs are checks of the benchmark—not evidence of my speed or research-assistant performance.
 
-A six-exam, 90-minute-per-task technical training repository for economics predoc and research-assistant assessments.
+The empty human scoreboard is public in [scoreboard/SCOREBOARD.md](scoreboard/SCOREBOARD.md).
 
-This is not a tutorial repository. It is a **timed execution bench**: messy data, large data, causal inference, scraping, text-as-data, and code debugging. Every task has explicit deliverables, machine-checkable outputs, a rubric, and an attempt log.
+## The six tasks
 
-## The six exams
+| Task | Problem | Time limit |
+| --- | --- | ---: |
+| 01 | Build a panel from messy, conflicting files | 90 minutes |
+| 02 | Process five million rows without loading the full table into memory | 90 minutes |
+| 03 | Reproduce and diagnose an event study | 90 minutes |
+| 04 | Ingest a 10,000-document local web archive | 90 minutes |
+| 05 | Build a text classifier without leakage | 90 minutes |
+| 06 | Find errors in inherited R and Stata code | 90 minutes |
 
-| Exam | Skill under pressure | Core stack | Time | Points |
-|---|---|---|---:|---:|
-| 01 | Messy multi-file panel construction | Python/pandas or R | 90m | 100 |
-| 02 | 5M-row out-of-core processing | DuckDB + Python | 90m | 100 |
-| 03 | Event-study reproduction | R/Stata/Python | 90m | 100 |
-| 04 | 10k-document ingestion | Python + HTTP/HTML/PDF metadata | 90m | 100 |
-| 05 | Text-as-data pipeline | sklearn/embeddings/NLP | 90m | 100 |
-| 06 | Debugging inherited empirical code | R + Stata reading | 90m | 100 |
+Each prompt contains output requirements and deliberate problems such as duplicate corrections, identifier drift, malformed documents, treatment-timing errors, or invalid inference. Reference solutions remain separate from the attempt folders.
 
-**Target:** 90 minutes each. **Pass:** 75/100. **Predoc-ready:** 85+/100 on every task with no critical reproducibility failures.
-
-## Companion research benchmark
-
-The repository now also contains [`forecast_tournament/`](forecast_tournament/): a separate real-time macroeconomic forecasting tournament with 14 default models, ALFRED/FRED vintage information sets, first-release vs revised truth, probabilistic scoring, Diebold–Mariano comparisons, regime slices, and a generated public leaderboard. It is a research object, not one of the timed exams.
-
-## What makes this a bench rather than six toy projects
-
-- deterministic challenge generation;
-- predeclared deliverable contracts;
-- automatic graders;
-- correctness, reproducibility, efficiency, documentation, and research-judgment scoring;
-- attempt metadata with elapsed time and output hashes;
-- a public scoreboard format;
-- reference implementations separated from candidate work;
-- CI that validates the benchmark itself.
-
-## Start
+## Start an attempt
 
 ```bash
 python -m venv .venv
-# Windows: .venv\\Scripts\\activate
-# macOS/Linux: source .venv/bin/activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 python scripts/bootstrap.py
 python scripts/start_exam.py 01
 ```
 
-Work only inside the generated `attempts/task01/<timestamp>/work/` folder. When done:
+When the time ends:
 
 ```bash
 python scripts/submit_exam.py 01 --attempt latest
 python grading/grade.py 01 --attempt latest
 ```
 
-For Task 02, generate the 5M-row dataset immediately before the clock starts:
+The raw attempt, assumptions, output hashes, score, and next correction should remain visible. A generated reference solution or automated validation is never entered as a human attempt.
 
-```bash
-python exams/task02_large_data/generate.py --rows 5000000
-```
+## Macro forecasting experiment
 
-For Task 04, generate and serve the local government archive:
+The repository also contains a separate [real-time macro forecasting tournament](forecast_tournament/README.md). That experiment has actual results:
 
-```bash
-python exams/task04_scraping/generate_archive.py --documents 10000
-python exams/task04_scraping/serve_archive.py
-```
+- only 2 of 14 models beat the no-change baseline on the average paired score;
+- the dynamic-factor model ranked first, but recorded 32 missing or failed headline forecasts;
+- only one model-cell win survived the stated multiplicity adjustment;
+- using revised instead of first-release outcomes changed the winning model in 3 of 12 target-horizon cells;
+- an evaluation bug initially compared models and the baseline over different successful origins; the forecasts were left unchanged and the aggregation was corrected in protocol v1.0.2.
 
-The local mirror is intentional: it creates a stable benchmark, avoids robots/ToS ambiguity, and still tests retries, parsing, concurrency, metadata normalization, malformed pages, and PDF handling.
+The correction is described in [forecast_tournament/ANALYSIS_PLAN.md](forecast_tournament/ANALYSIS_PLAN.md), and the generated summary is in [forecast_tournament/results/runs/2026-08-09-protocol-1.0.2/research_summary.md](forecast_tournament/results/runs/2026-08-09-protocol-1.0.2/research_summary.md).
 
-## Score bands
+## Results
 
-- **95-100 — exceptional:** correct, fast, auditable, robust to traps, clean research judgment.
-- **85-94 — predoc-ready:** strong enough to discuss in interviews and send to faculty.
-- **75-84 — competent:** passes, but has material speed/engineering/statistical gaps.
-- **60-74 — fragile:** works on the happy path; breaks under common RA conditions.
-- **<60 — rebuild:** correctness or reproducibility is not yet reliable.
-
-A submission with fabricated results, hand-edited outputs that cannot be regenerated, or undisclosed exclusions receives a **critical fail** regardless of numerical score.
-
-## Public portfolio use
-
-Do the exams on dated branches such as `attempt/task03-2026-08-10`. Keep your raw attempt, final output, and `ATTEMPT.json`. Publish the scoreboard only after at least one clean pass. The repository becomes evidence that you can enter unfamiliar data/code and produce a defensible result under time pressure.
-
-## Repository layout
-
-```text
-exams/        prompts, raw-data generators, starter contracts
-attempts/     your timed work (generated locally)
-grading/      machine checks and rubric logic
-reference/    reference outputs/implementations; do not open during an attempt
-scripts/      timer, submitter, bootstrap, scoreboard builder
-scoreboard/   public score templates
-forecast_tournament/  real-time macro forecasting research benchmark
-.github/      benchmark CI and issue template
-```
-
-## Rules
-
-1. Clock starts when `start_exam.py` writes the attempt record.
-2. Internet is allowed for documentation unless a prompt says otherwise.
-3. You may use any language specified by the task, but outputs must match the contract.
-4. All exclusions must be documented.
-5. Random processes must be seeded.
-6. One command must reproduce the final outputs from raw inputs.
-7. Do not inspect `reference/` until after submission.
-8. Record any assumption that would matter to a coauthor.
-
-## Why this maps to actual RA work
-
-The bench deliberately tests the failure modes that consume real empirical-research time: nonunique keys, identifier drift, duplicate corrections, memory pressure, fixed effects, clustered inference, event-time coding, unstable web metadata, malformed documents, leakage in text models, and silently wrong inherited scripts.
-
-License: MIT for code; generated synthetic benchmark data may be reused freely with attribution to this repository.
+[RESULTS.md](RESULTS.md) separates benchmark checks, human attempts, and the macro experiment. The repository should not support a claim of timed RA proficiency until real attempts are completed.
