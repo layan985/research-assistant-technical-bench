@@ -1,0 +1,59 @@
+id,title,skill,dialect
+1,Revenue by month,grouping,SQLite
+2,Trailing 3-month revenue,window frame,SQLite
+3,Channel rank within country,partitioned ranking,SQLite
+4,Customer revenue deciles,NTILE,SQLite
+5,Repeat purchase rate,conditional aggregation,SQLite
+6,Return rate by category,joins,SQLite
+7,Discount buckets,bucketing,SQLite
+8,Days since previous order,LAG,SQLite
+9,Customer cohort month,cohorts,SQLite
+10,Top product by category,ROW_NUMBER,SQLite
+11,Pareto customer concentration,cumulative windows,SQLite
+12,Return severity,operations KPI,SQLite
+13,Monthly return rate,time series,SQLite
+14,Discount penetration,window denominator,SQLite
+15,Country AOV,multi-table joins,SQLite
+16,Category margin proxy,unit economics,SQLite
+17,Customer recency rank,ranking,SQLite
+18,Inactive customers,customer health,SQLite
+19,Order-size quartiles,distribution,SQLite
+20,Channel return-adjusted revenue,tradeoffs,SQLite
+21,Customer lifetime days,date arithmetic,SQLite
+22,Product cross-sell pairs,self join,SQLite
+23,Category breadth per order,distinct counts,SQLite
+24,New vs repeat monthly mix,ROW_NUMBER,SQLite
+25,Longest gap per customer,window + aggregate,SQLite
+26,High-return customers,HAVING,SQLite
+27,Product attach rate,subquery,SQLite
+28,Monthly active customers,active users,SQLite
+29,Revenue growth rate,growth with LAG,SQLite
+30,Return reason rank,aggregate window,SQLite
+31,Country-segment matrix,matrix,SQLite
+32,Discount by channel,join KPI,SQLite
+33,High-value customer share,conditional aggregation,SQLite
+34,Completed-order share,quality KPI,SQLite
+35,Duplicate-order audit,QA,SQLite
+36,Orphan item audit,referential QA,SQLite
+37,Orphan return audit,referential QA,SQLite
+38,Negative-value audit,data quality,SQLite
+39,Customer duplicate audit,dimension QA,SQLite
+40,Product duplicate audit,dimension QA,SQLite
+41,Revenue reconciliation,reconciliation,SQLite
+42,Monthly category trend,multidimensional trend,SQLite
+43,Customer top category,customer preference,SQLite
+44,Channel monthly growth,partitioned LAG,SQLite
+45,RFM base,RFM,SQLite
+46,RFM score,scoring windows,SQLite
+47,Top 10% customers,deciles,SQLite
+48,Channel customer economics,unit economics,SQLite
+49,Recursive date spine,recursive CTE,PostgreSQL pattern
+50,Sessionization,sessionization,PostgreSQL pattern
+51,Percentile_cont median,ordered-set aggregate,PostgreSQL pattern
+52,Lateral top-N,LATERAL,PostgreSQL pattern
+53,Distinct on latest row,DISTINCT ON,PostgreSQL pattern
+54,Generate-series calendar,date spine,PostgreSQL pattern
+55,FILTER aggregates,FILTER,PostgreSQL pattern
+56,JSONB extraction,JSONB,PostgreSQL pattern
+57,Explain analyze,optimization,PostgreSQL pattern
+58,Concurrent materialized refresh,warehouse ops,PostgreSQL pattern
