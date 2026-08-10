@@ -52,6 +52,14 @@ The repository also contains a separate [real-time macro forecasting tournament]
 
 The correction is described in [forecast_tournament/ANALYSIS_PLAN.md](forecast_tournament/ANALYSIS_PLAN.md), and the generated summary is in [forecast_tournament/results/runs/2026-08-09-protocol-1.0.2/research_summary.md](forecast_tournament/results/runs/2026-08-09-protocol-1.0.2/research_summary.md).
 
+## SQL analytics work sample
+
+[`work_samples/sql-analytics-casebook/`](work_samples/sql-analytics-casebook/) contains 58 analytical SQL patterns. Forty-eight SQLite-compatible queries are executed against a deterministic public fixture by `validate_casebook.py`; ten PostgreSQL-specific patterns are labeled separately rather than passed off as SQLite-tested code.
+
+The folder covers windows, cohorts, RFM, basket self-joins, reconciliation, referential-integrity checks and commercial unit economics. Its CI job validates the public query contract on every change.
+
+This work sample is separate from the timed-exam scoreboard above. Passing its automated validation does **not** count as a human timed attempt.
+
 ## Results
 
 [RESULTS.md](RESULTS.md) separates benchmark checks, human attempts, and the macro experiment. The repository should not support a claim of timed RA proficiency until real attempts are completed.
